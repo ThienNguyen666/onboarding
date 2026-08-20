@@ -1,7 +1,7 @@
 package com.bank.onboarding.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.NestedConfigurationProperty;
+// import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 @ConfigurationProperties(prefix = "app.onboarding")
 public class OnboardingProperties {

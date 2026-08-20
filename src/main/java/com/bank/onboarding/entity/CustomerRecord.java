@@ -13,7 +13,7 @@ import java.time.Instant;
  * để demo nhánh ETB.
  */
 @Entity
-@Table(name = "customer_record", indexes = @Index(name = "ix_customer_phone", columnList = "phone", unique = true))
+@Table(name = "customer_record", indexes = @Index(name = "idx_customer_phone", columnList = "phone", unique = true))
 @Getter
 @Setter
 @NoArgsConstructor

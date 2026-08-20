@@ -19,7 +19,7 @@ import com.bank.onboarding.entity.OnboardingSession;
 import com.bank.onboarding.exception.OnboardingException;
 import com.bank.onboarding.repository.AuditLogRepository;
 import com.bank.onboarding.repository.OnboardingSessionRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;

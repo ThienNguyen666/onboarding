@@ -33,6 +33,7 @@ public class GlobalExceptionHandler {
                 .body(body("INTERNAL_ERROR", ex.getMessage()));
     }
 
+
     private Map<String, Object> body(String code, String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
