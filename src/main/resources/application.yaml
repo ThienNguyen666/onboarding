@@ -1,3 +1,52 @@
 spring:
   application:
     name: onboarding
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/onboarding
+    username: onboarding
+    password: onboarding
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# ---------------------------------------------------------------------------
+# Cấu hình nghiệp vụ cho luồng eKYC onboarding (prototype).
+# Toàn bộ giá trị mock/test đều nằm ở đây để không phải sửa code khi demo.
+# ---------------------------------------------------------------------------
+app:
+  onboarding:
+    retry:
+      default-max-ocr-retries: 3
+      default-max-liveness-retries: 3
+      default-max-nfc-retries: 3
+    otp:
+      length: 6
+      ttl-seconds: 300
+      max-verify-attempts: 5
+      # true = luôn cho xem OTP hiện tại qua endpoint debug (CHỈ bật ở dev/local!)
+      debug-endpoint-enabled: true
+    dropoff:
+      ttl-hours: 24
+    ekyc-mock:
+      # true = OCR/Liveness/NFC luôn PASS trừ khi request truyền forceFail=true
+      always-pass-by-default: true
+    compliance-mock:
+      # RULE_BASED (theo số cuối SĐT) hoặc RANDOM
+      strategy: RULE_BASED
+
+logging:
+  level:
+    com.bank.onboarding: DEBUG
