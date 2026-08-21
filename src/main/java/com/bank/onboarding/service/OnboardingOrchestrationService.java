@@ -14,6 +14,7 @@ import com.bank.onboarding.dto.EkycStepDtos.EkycStepResponse;
 import com.bank.onboarding.dto.IdentityAndOtpDtos.*;
 import com.bank.onboarding.dto.InitDtos.*;
 import com.bank.onboarding.dto.SessionStatusResponse;
+import com.bank.onboarding.dto.SessionSummary;
 import com.bank.onboarding.entity.AuditLogEntry;
 import com.bank.onboarding.entity.OnboardingSession;
 import com.bank.onboarding.exception.OnboardingException;
@@ -22,8 +23,10 @@ import com.bank.onboarding.repository.OnboardingSessionRepository;
 import com.bank.onboarding.util.Masking;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.security.SecureRandom;
 import java.util.Map;
@@ -49,6 +52,7 @@ public class OnboardingOrchestrationService {
     private final OtpService otpService;
     private final ComplianceMockService complianceMockService;
     private final NotificationMockService notificationMockService;
+    private final StringRedisTemplate redisTemplate;
 
     // ------------------------------------------------------------------
     // Phase 0 — init SDK.
@@ -409,6 +413,23 @@ public class OnboardingOrchestrationService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public java.util.List<SessionSummary> listRecentSessions() {
+        return sessionRepository.findTop20ByOrderByCreatedAtDesc().stream()
+                .map(s -> new SessionSummary(s.getId(), Masking.phone(s.getPhone()),
+                        s.getPhase().name(), s.getStatus().name(), s.getCreatedAt()))
+                .toList();
+    }
+
+    // Dev-only: xoá sạch session + audit log + toàn bộ key Redis onboarding để demo lại từ đầu.
+    @Transactional
+    public void resetAllData() {
+        auditLogRepository.deleteAllInBatch();
+        sessionRepository.deleteAllInBatch();
+        var keys = redisTemplate.keys("onboarding:*");
+        if (keys != null && !keys.isEmpty()) redisTemplate.delete(keys);
+        log.warn("[DEBUG] Reset toàn bộ session + audit log + Redis onboarding:*");
+    }
     // ------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------
