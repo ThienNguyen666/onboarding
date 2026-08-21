@@ -2,17 +2,15 @@ package com.bank.onboarding.service;
 
 import com.bank.onboarding.config.OnboardingProperties;
 import com.bank.onboarding.domain.ComplianceStatus;
+import com.bank.onboarding.exception.OnboardingException;
+import com.bank.onboarding.util.Masking;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 
-/**
- * Thay cho task "process_account_in_conductor" (đẩy data vào core banking +
- * chấm compliance). Ở prototype: giả lập kết quả bằng rule theo số cuối SĐT
- * (đoán trước được, dễ demo), hoặc random nếu cấu hình strategy=RANDOM.
- * Có thể ép kết quả qua forceResult để test nhanh cả 3 nhánh SUCCESS/NEED_REVIEW/FAILED.
- */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ComplianceMockService {
@@ -23,17 +21,38 @@ public class ComplianceMockService {
 
     public ComplianceStatus decide(String phone, String forceResult) {
         if (forceResult != null && !forceResult.isBlank()) {
-            return ComplianceStatus.valueOf(forceResult.trim().toUpperCase());
+            return forceResult(forceResult);
         }
+        ComplianceStatus result = "RANDOM".equalsIgnoreCase(properties.complianceMock().strategy())
+                ? decideRandom()
+                : decideRuleBased(phone);
+        log.debug("Compliance decision phone={} strategy={} result={}",
+                Masking.phone(phone), properties.complianceMock().strategy(), result);
+        return result;
+    }
 
-        if ("RANDOM".equalsIgnoreCase(properties.getComplianceMock().getStrategy())) {
-            int roll = RANDOM.nextInt(100);
-            if (roll < 80) return ComplianceStatus.SUCCESS;
-            if (roll < 95) return ComplianceStatus.NEED_REVIEW;
-            return ComplianceStatus.FAILED;
+    // FIX: trước đây ComplianceStatus.valueOf ném IllegalArgumentException thô -> rơi vào
+    // handler generic -> trả 500. Nay validate rõ ràng -> 400 BAD_REQUEST.
+    private ComplianceStatus forceResult(String forceResult) {
+        try {
+            ComplianceStatus forced = ComplianceStatus.valueOf(forceResult.trim().toUpperCase());
+            log.info("Compliance result forced to {} (QA/demo override)", forced);
+            return forced;
+        } catch (IllegalArgumentException e) {
+            throw OnboardingException.badRequest(
+                    "forceComplianceResult không hợp lệ: '" + forceResult
+                            + "' (chỉ chấp nhận SUCCESS/NEED_REVIEW/FAILED)");
         }
+    }
 
-        // RULE_BASED: số cuối SĐT 8/9 -> NEED_REVIEW, 0 -> FAILED, còn lại SUCCESS.
+    private ComplianceStatus decideRandom() {
+        int roll = RANDOM.nextInt(100);
+        if (roll < 80) return ComplianceStatus.SUCCESS;
+        if (roll < 95) return ComplianceStatus.NEED_REVIEW;
+        return ComplianceStatus.FAILED;
+    }
+
+    private ComplianceStatus decideRuleBased(String phone) {
         char last = phone.charAt(phone.length() - 1);
         return switch (last) {
             case '8', '9' -> ComplianceStatus.NEED_REVIEW;

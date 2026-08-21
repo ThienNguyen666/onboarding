@@ -10,12 +10,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Endpoint tiện debug: xem OTP hiện tại thay vì phải cắm SMS gateway thật.
  * BẮT BUỘC tắt (app.onboarding.otp.debug-endpoint-enabled=false) trước khi
  * lên môi trường có dữ liệu thật — mặc định chỉ nên bật ở dev/local.
  */
+@Slf4j   // thêm annotation
 @RestController
 @RequestMapping("/api/onboarding/debug")
 @RequiredArgsConstructor
@@ -26,10 +28,11 @@ public class DebugController {
 
     @GetMapping("/sessions/{sessionId}/otp")
     public OtpDebugResponse peekOtp(@PathVariable String sessionId) {
-        if (!properties.getOtp().isDebugEndpointEnabled()) {
+        if (!properties.otp().debugEndpointEnabled()) {          // đổi từ getOtp().isDebugEndpointEnabled()
             throw new OnboardingException(HttpStatus.FORBIDDEN, "DEBUG_DISABLED",
                     "Debug OTP endpoint đang tắt (app.onboarding.otp.debug-endpoint-enabled=false)");
         }
+        log.warn("[DEBUG] OTP peek requested for session={} — CHỈ được bật ở dev/local!", sessionId);
         String otp = otpService.debugPeek(sessionId);
         if (otp == null) {
             throw OnboardingException.notFound("Chưa có OTP nào được gửi cho phiên này (hoặc đã hết hạn)");

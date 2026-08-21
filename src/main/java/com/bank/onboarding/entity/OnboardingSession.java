@@ -8,16 +8,13 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
-/**
- * Thay thế cho "workflow instance" của Orkes trong bản prototype này:
- * mỗi phiên mở tài khoản NTB qua SDK vendor là 1 row, cập nhật dần qua
- * từng phase. Các trường *Data lưu JSON string (mock payload OCR/Liveness/NFC)
- * để tránh phụ thuộc thêm thư viện JSON-column.
- */
 @Entity
 @Table(name = "onboarding_session")
 @Getter
@@ -36,9 +33,10 @@ public class OnboardingSession {
     private String productType;
     private String accessToken;
 
-    // ---- Phase 1 ----
-    @Lob
-    private String deviceInfoJson;
+    // ---- Phase 1 ---- (đơn giản hoá: 3 field DeviceCheckRequest, không cần blob JSON)
+    private String deviceModel;
+    private String deviceOsVersion;
+    private Boolean deviceNfcSupported;
     private Boolean deviceEligible;
 
     // ---- Phase 2 ----
@@ -49,27 +47,30 @@ public class OnboardingSession {
     private boolean dropoff = false;
 
     // ---- Phase 3: OCR ----
-    @Lob
-    private String cccdDataJson;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> cccdData;
     private int ocrRetryCount = 0;
     private Boolean ocrPassed;
 
     // ---- Phase 4: Liveness ----
-    @Lob
-    private String livenessDataJson;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> livenessData;
     private int livenessRetryCount = 0;
     private Boolean livenessPassed;
 
     // ---- Phase 5: NFC ----
-    @Lob
-    private String nfcDataJson;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> nfcData;
     private int nfcRetryCount = 0;
     private Boolean nfcPassed;
 
     // ---- Phase 6: identity / TnC / OTP ----
     private boolean identityConfirmed = false;
     private boolean tncAccepted = false;
-    private String otpTokenRef; // trỏ tới OTP record trong Redis, không lưu OTP thật ở đây
+    private String otpTokenRef;
     private boolean otpVerified = false;
 
     // ---- Phase 7: account creation ----

@@ -19,24 +19,22 @@ import com.bank.onboarding.entity.OnboardingSession;
 import com.bank.onboarding.exception.OnboardingException;
 import com.bank.onboarding.repository.AuditLogRepository;
 import com.bank.onboarding.repository.OnboardingSessionRepository;
-import tools.jackson.databind.ObjectMapper;
+import com.bank.onboarding.util.Masking;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Orchestrator thay thế cho engine Orkes Conductor: mỗi method public tương
- * ứng với một "phase" trong workflow gốc (vendor_sdk_ekyc_account_opening_2.json),
- * đọc/ghi trực tiếp lên OnboardingSession thay vì DO_WHILE/SWITCH/TERMINATE task.
- *
- * Các rút gọn có chủ đích so với workflow gốc (đã thống nhất là chấp nhận được
- * cho bản prototype) được ghi chú ngay tại chỗ liên quan.
+ * ứng với một "phase" trong workflow gốc (vendor_sdk_ekyc_account_opening_2.json).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OnboardingOrchestrationService {
@@ -45,7 +43,6 @@ public class OnboardingOrchestrationService {
 
     private final OnboardingSessionRepository sessionRepository;
     private final AuditLogRepository auditLogRepository;
-    private final ObjectMapper objectMapper;
     private final OnboardingProperties properties;
     private final CustomerDirectoryService customerDirectoryService;
     private final MockEkycService mockEkycService;
@@ -54,9 +51,7 @@ public class OnboardingOrchestrationService {
     private final NotificationMockService notificationMockService;
 
     // ------------------------------------------------------------------
-    // Phase 0 — init SDK. Bỏ OAuth client-credential thật vì SDK là do
-    // chính bank phát hành (không phải vendor thứ 3) -> sinh accessToken
-    // nội bộ đủ dùng cho việc trace phiên, không cần xác thực vendor.
+    // Phase 0 — init SDK.
     // ------------------------------------------------------------------
     @Transactional
     public InitSessionResponse init(InitSessionRequest req) {
@@ -67,6 +62,7 @@ public class OnboardingOrchestrationService {
         session.setAccessToken(UUID.randomUUID().toString());
         session.setPhase(SessionPhase.DEVICE_CHECK);
         sessionRepository.save(session);
+        log.info("Session init id={} vendorId={} productType={}", session.getId(), req.vendorId(), req.productType());
         audit(session.getId(), "SESSION_INIT", Map.of("vendorId", req.vendorId(), "productType", req.productType()));
         return new InitSessionResponse(session.getId(), session.getAccessToken(), session.getPhase().name());
     }
@@ -74,18 +70,20 @@ public class OnboardingOrchestrationService {
     // ------------------------------------------------------------------
     // Phase 1 — device + NFC check
     // ------------------------------------------------------------------
-    @SneakyThrows
     @Transactional
     public DeviceCheckResponse checkDevice(String sessionId, DeviceCheckRequest req) {
         OnboardingSession session = require(sessionId, SessionPhase.DEVICE_CHECK);
 
-        session.setDeviceInfoJson(objectMapper.writeValueAsString(req));
-        boolean eligible = req.nfcSupported(); // rule tối giản cho prototype: chỉ cần máy hỗ trợ NFC
+        session.setDeviceModel(req.model());
+        session.setDeviceOsVersion(req.osVersion());
+        session.setDeviceNfcSupported(req.nfcSupported());
+        boolean eligible = req.nfcSupported(); // rule tối giản cho prototype
         session.setDeviceEligible(eligible);
 
         if (!eligible) {
             session.terminate(SessionStatus.FAILED, "Thiết bị không thỏa điều kiện hoặc không hỗ trợ NFC");
             sessionRepository.save(session);
+            log.info("Session {} terminated: device not eligible (model={})", sessionId, req.model());
             return new DeviceCheckResponse(false, session.getTerminationReason(), session.getPhase().name());
         }
 
@@ -96,9 +94,6 @@ public class OnboardingOrchestrationService {
 
     // ------------------------------------------------------------------
     // Phase 2 — ETB/NTB + dropoff.
-    // Rút gọn: bỏ luồng "handle_etb_customer" chi tiết (điều hướng qua app
-    // ETB riêng) — prototype chỉ cần dừng lại và trả customerType=ETB để FE
-    // tự điều hướng, không mô phỏng app ETB.
     // ------------------------------------------------------------------
     @Transactional
     public CustomerLookupResponse lookupCustomer(String sessionId, PhoneRequest req) {
@@ -114,18 +109,14 @@ public class OnboardingOrchestrationService {
             session.terminate(SessionStatus.SUCCESS,
                     "ETB_REDIRECT: KH đã có tài khoản, điều hướng sang luồng ETB (không tính vào tỷ lệ mở TK NTB)");
             sessionRepository.save(session);
+            log.info("Session {} -> ETB redirect, customerId={}", sessionId, etb.getCustomerId());
             return new CustomerLookupResponse("ETB", false, null, session.getPhase().name());
         }
 
         // NTB
-        var dropoff = customerDirectoryService.findDropoff(req.phone());
+        Optional<CustomerDirectoryService.DropoffInfo> dropoff = customerDirectoryService.findDropoff(req.phone());
         if (dropoff.isPresent()) {
-            String resumeStep = dropoff.get()[1];
-            session.setCustomerId(customerDirectoryService.newNtbCustomerId());
-            session.setDropoff(true);
-            session.setPhase(SessionPhase.valueOf(resumeStep));
-            sessionRepository.save(session);
-            return new CustomerLookupResponse("NTB", true, resumeStep, session.getPhase().name());
+            return resumeFromDropoff(session, req.phone(), dropoff.get());
         }
 
         session.setCustomerId(customerDirectoryService.newNtbCustomerId());
@@ -134,39 +125,87 @@ public class OnboardingOrchestrationService {
         return new CustomerLookupResponse("NTB", false, null, session.getPhase().name());
     }
 
+    /**
+     * FIX: mỗi lần mở SDK, init() tạo 1 session row hoàn toàn mới -> nếu chỉ set
+     * phase=resumeStep mà không copy lại cccdData/livenessData/nfcData/retryCount
+     * từ session cũ, các bước sau (VD confirmIdentity cần cccdData) sẽ thiếu dữ liệu
+     * và lỗi. Dùng findTopByPhoneOrderByCreatedAtDesc (vốn có sẵn nhưng chưa từng
+     * được gọi) để lấy lại tiến độ session trước đó.
+     */
+    private CustomerLookupResponse resumeFromDropoff(OnboardingSession session, String phone,
+                                                       CustomerDirectoryService.DropoffInfo dropoff) {
+        SessionPhase resumePhase;
+        try {
+            resumePhase = SessionPhase.valueOf(dropoff.resumeStep());
+        } catch (IllegalArgumentException e) {
+            log.warn("Dropoff resumeStep không hợp lệ '{}' cho phone={}, bỏ qua dropoff", dropoff.resumeStep(), Masking.phone(phone));
+            resumePhase = SessionPhase.OCR;
+        }
+
+        Optional<OnboardingSession> previous = sessionRepository.findTopByPhoneOrderByCreatedAtDesc(phone);
+        if (previous.isPresent()) {
+            copyProgress(session, previous.get());
+            log.info("Resuming dropoff: phone={} newSession={} fromSession={} resumePhase={}",
+                    Masking.phone(phone), session.getId(), previous.get().getId(), resumePhase);
+        } else {
+            log.warn("Dropoff flag tồn tại cho phone={} nhưng không tìm thấy session cũ — bắt đầu lại từ OCR",
+                    Masking.phone(phone));
+            session.setCustomerId(customerDirectoryService.newNtbCustomerId());
+            resumePhase = SessionPhase.OCR;
+        }
+
+        session.setDropoff(true);
+        session.setPhase(resumePhase);
+        customerDirectoryService.clearDropoff(phone);
+        sessionRepository.save(session);
+        return new CustomerLookupResponse("NTB", true, resumePhase.name(), session.getPhase().name());
+    }
+
+    private void copyProgress(OnboardingSession target, OnboardingSession source) {
+        target.setCustomerId(source.getCustomerId());
+        target.setOcrPassed(source.getOcrPassed());
+        target.setCccdData(source.getCccdData());
+        target.setOcrRetryCount(source.getOcrRetryCount());
+        target.setLivenessPassed(source.getLivenessPassed());
+        target.setLivenessData(source.getLivenessData());
+        target.setLivenessRetryCount(source.getLivenessRetryCount());
+        target.setNfcPassed(source.getNfcPassed());
+        target.setNfcData(source.getNfcData());
+        target.setNfcRetryCount(source.getNfcRetryCount());
+        target.setIdentityConfirmed(source.isIdentityConfirmed());
+        target.setTncAccepted(source.isTncAccepted());
+    }
+
     // ------------------------------------------------------------------
     // Phase 3/4/5 — OCR / Liveness / NFC, cùng 1 khuôn retry-loop.
-    // Rút gọn: thay DO_WHILE + SET_VARIABLE (đặc thù engine Orkes) bằng
-    // counter field trực tiếp trên OnboardingSession — kết quả tương đương,
-    // không cần workflow.variables.
     // ------------------------------------------------------------------
     @Transactional
     public EkycStepResponse submitOcr(String sessionId, EkycStepRequest req) {
         return runEkycStep(sessionId, SessionPhase.OCR, SessionPhase.LIVENESS,
-                properties.getRetry().getDefaultMaxOcrRetries(), req,
+                properties.retry().defaultMaxOcrRetries(), req,
                 (session, passed) -> {
                     session.setOcrPassed(passed);
-                    session.setCccdDataJson(mockEkycService.mockCccdData(req.mockPayload()));
+                    session.setCccdData(mockEkycService.mockCccdData(req.mockPayload()));
                 });
     }
 
     @Transactional
     public EkycStepResponse submitLiveness(String sessionId, EkycStepRequest req) {
         return runEkycStep(sessionId, SessionPhase.LIVENESS, SessionPhase.NFC,
-                properties.getRetry().getDefaultMaxLivenessRetries(), req,
+                properties.retry().defaultMaxLivenessRetries(), req,
                 (session, passed) -> {
                     session.setLivenessPassed(passed);
-                    session.setLivenessDataJson(mockEkycService.mockLivenessData(req.mockPayload()));
+                    session.setLivenessData(mockEkycService.mockLivenessData(req.mockPayload()));
                 });
     }
 
     @Transactional
     public EkycStepResponse submitNfc(String sessionId, EkycStepRequest req) {
         return runEkycStep(sessionId, SessionPhase.NFC, SessionPhase.IDENTITY_CONFIRM,
-                properties.getRetry().getDefaultMaxNfcRetries(), req,
+                properties.retry().defaultMaxNfcRetries(), req,
                 (session, passed) -> {
                     session.setNfcPassed(passed);
-                    session.setNfcDataJson(mockEkycService.mockNfcData(req.mockPayload()));
+                    session.setNfcData(mockEkycService.mockNfcData(req.mockPayload()));
                 });
     }
 
@@ -174,8 +213,8 @@ public class OnboardingOrchestrationService {
         void apply(OnboardingSession session, boolean passed);
     }
 
-    // Gọi nội bộ từ 3 method public phía trên (đã có @Transactional bao ngoài) —
-    // không tự đánh @Transactional ở đây vì self-invocation sẽ bị Spring AOP bỏ qua.
+    // Gọi nội bộ từ 3 method public phía trên (đã @Transactional bao ngoài) —
+    // không tự đánh @Transactional ở đây vì self-invocation bị Spring AOP bỏ qua.
     private EkycStepResponse runEkycStep(String sessionId, SessionPhase currentPhase, SessionPhase nextPhase,
                                           int maxRetries, EkycStepRequest req, StepApplier applier) {
         OnboardingSession session = require(sessionId, currentPhase);
@@ -185,6 +224,7 @@ public class OnboardingOrchestrationService {
         if (passed) {
             session.setPhase(nextPhase);
             sessionRepository.save(session);
+            log.info("Session {} phase {} PASSED -> {}", sessionId, currentPhase, nextPhase);
             return new EkycStepResponse(true, retryCountOf(session, currentPhase), maxRetries, false,
                     session.getPhase().name(), session.getStatus().name());
         }
@@ -193,6 +233,9 @@ public class OnboardingOrchestrationService {
         boolean retryAllowed = attempt < maxRetries;
         if (!retryAllowed) {
             session.terminate(SessionStatus.FAILED, currentPhase.name() + " thất bại sau tối đa số lần thử lại");
+            log.warn("Session {} phase {} FAILED after {} attempts", sessionId, currentPhase, attempt);
+        } else {
+            log.info("Session {} phase {} failed, attempt {}/{}, retry allowed", sessionId, currentPhase, attempt, maxRetries);
         }
         sessionRepository.save(session);
         return new EkycStepResponse(false, attempt, maxRetries, retryAllowed,
@@ -221,32 +264,29 @@ public class OnboardingOrchestrationService {
 
     // ------------------------------------------------------------------
     // Phase 6a — xác nhận định danh + kiểm tra tuổi >= 18.
-    // Rút gọn: bỏ việc re-derive ETB từ GTTT (đã chốt ETB/NTB ở phase 2);
-    // ở đây chỉ còn check tuổi vì đó là phần logic nghiệp vụ thực, phần
-    // ETB-detect-lại cần dữ liệu core banking thật mới mô phỏng có ý nghĩa.
     // ------------------------------------------------------------------
     @Transactional
     public IdentityConfirmResponse confirmIdentity(String sessionId) {
         OnboardingSession session = require(sessionId, SessionPhase.IDENTITY_CONFIRM);
-        int age = mockEkycService.ageFromCccd(session.getCccdDataJson());
+        int age = mockEkycService.ageFromCccd(session.getCccdData());
 
         if (age < 18) {
             session.terminate(SessionStatus.FAILED, "KH chưa đủ 18 tuổi, không đủ điều kiện mở tài khoản");
             sessionRepository.save(session);
-            return new IdentityConfirmResponse("UNDERAGE", readJson(session.getCccdDataJson()),
-                    readJson(session.getNfcDataJson()), false, session.getPhase().name());
+            log.info("Session {} terminated: UNDERAGE (age={})", sessionId, age);
+            return new IdentityConfirmResponse("UNDERAGE", session.getCccdData(),
+                    session.getNfcData(), false, session.getPhase().name());
         }
 
         session.setIdentityConfirmed(true);
         session.setPhase(SessionPhase.TNC);
         sessionRepository.save(session);
-        return new IdentityConfirmResponse("NTB", readJson(session.getCccdDataJson()),
-                readJson(session.getNfcDataJson()), true, session.getPhase().name());
+        return new IdentityConfirmResponse("NTB", session.getCccdData(),
+                session.getNfcData(), true, session.getPhase().name());
     }
 
     // ------------------------------------------------------------------
-    // Phase 6b — TnC (nội dung TnC theo productType do FE tự render tuỳ
-    // TKTT hay TKTT+Debit, backend chỉ ghi nhận đồng ý).
+    // Phase 6b — TnC
     // ------------------------------------------------------------------
     @Transactional
     public void acceptTnc(String sessionId, TncAcceptRequest req) {
@@ -261,9 +301,7 @@ public class OnboardingOrchestrationService {
     }
 
     // ------------------------------------------------------------------
-    // Phase 6c — OTP. Rút gọn: gen random 6 số lưu Redis TTL thay vì gọi
-    // gateway SMS thật; có endpoint debug riêng để xem OTP khi test (xem
-    // DebugController) thay vì phải đọc SMS.
+    // Phase 6c — OTP
     // ------------------------------------------------------------------
     @Transactional
     public OtpSendResponse sendOtp(String sessionId) {
@@ -274,7 +312,7 @@ public class OnboardingOrchestrationService {
         otpService.generateAndStore(sessionId);
         session.setOtpTokenRef(sessionId);
         sessionRepository.save(session);
-        return new OtpSendResponse(session.getPhase().name(), properties.getOtp().getTtlSeconds());
+        return new OtpSendResponse(session.getPhase().name(), properties.otp().ttlSeconds());
     }
 
     @Transactional
@@ -296,12 +334,6 @@ public class OnboardingOrchestrationService {
 
     // ------------------------------------------------------------------
     // Phase 7 — tạo tài khoản + "xử lý tiếp theo trong Conductor".
-    // Rút gọn lớn nhất của prototype: FORK_JOIN (show_result_to_customer //
-    // process_account_in_conductor) gộp lại tuần tự trong 1 transaction vì
-    // không có core banking thật để gọi song song; kết quả compliance được
-    // mock bằng rule theo SĐT (xem ComplianceMockService). NEED_REVIEW vẫn
-    // giữ đúng nguyên tắc "không polling trực tiếp lên workflow" — chỉ trả
-    // trạng thái, cập nhật sau qua kênh khác nếu cần.
     // ------------------------------------------------------------------
     @Transactional
     public CreateAccountResponse createAccount(String sessionId, CreateAccountRequest req) {
@@ -337,6 +369,8 @@ public class OnboardingOrchestrationService {
         }
 
         sessionRepository.save(session);
+        log.info("Session {} FINAL RESULT compliance={} ebankUserId={} accountNumber={}",
+                sessionId, compliance, session.getEbankUserId(), session.getAccountNumber());
         audit(sessionId, "FINAL_RESULT", Map.of(
                 "complianceStatus", compliance.name(),
                 "ebankUserId", session.getEbankUserId(),
@@ -351,6 +385,7 @@ public class OnboardingOrchestrationService {
     // ------------------------------------------------------------------
     // Query / debug
     // ------------------------------------------------------------------
+    @Transactional(readOnly = true)
     public SessionStatusResponse status(String sessionId) {
         OnboardingSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> OnboardingException.notFound("Không tìm thấy phiên: " + sessionId));
@@ -364,7 +399,6 @@ public class OnboardingOrchestrationService {
                 session.getTerminationReason());
     }
 
-    /** Đánh dấu dropoff thủ công (FE gọi khi user thoát app giữa chừng ở 1 phase còn dở). */
     @Transactional
     public void markDropoff(String sessionId) {
         OnboardingSession session = sessionRepository.findById(sessionId)
@@ -397,13 +431,7 @@ public class OnboardingOrchestrationService {
         return sb.toString();
     }
 
-    @SneakyThrows
-    private Object readJson(String json) {
-        return json == null ? null : objectMapper.readValue(json, Map.class);
-    }
-
-    @SneakyThrows
     private void audit(String sessionId, String event, Map<String, Object> detail) {
-        auditLogRepository.save(new AuditLogEntry(sessionId, event, objectMapper.writeValueAsString(detail)));
+        auditLogRepository.save(new AuditLogEntry(sessionId, event, detail));
     }
 }

@@ -4,14 +4,13 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
-/**
- * Ghi vết cuối luồng (và các mốc quan trọng) — tương ứng task
- * "audit_log_final_result" trong workflow gốc.
- */
 @Entity
 @Table(name = "audit_log_entry")
 @Getter
@@ -28,15 +27,16 @@ public class AuditLogEntry {
     @Column(nullable = false)
     private String event;
 
-    @Lob
-    private String detailJson;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> detail;
 
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
-    public AuditLogEntry(String sessionId, String event, String detailJson) {
+    public AuditLogEntry(String sessionId, String event, Map<String, Object> detail) {
         this.sessionId = sessionId;
         this.event = event;
-        this.detailJson = detailJson;
+        this.detail = detail;
     }
 }

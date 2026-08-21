@@ -1,7 +1,9 @@
 package com.bank.onboarding.exception;
 
+import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
+@Getter
 public class OnboardingException extends RuntimeException {
 
     private final HttpStatus status;
@@ -24,7 +26,4 @@ public class OnboardingException extends RuntimeException {
     public static OnboardingException badRequest(String message) {
         return new OnboardingException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message);
     }
-
-    public HttpStatus getStatus() { return status; }
-    public String getCode() { return code; }
 }
