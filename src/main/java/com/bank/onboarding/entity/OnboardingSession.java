@@ -16,7 +16,9 @@ import java.util.Map;
 import java.util.UUID;
 
 @Entity
-@Table(name = "onboarding_session")
+@Table(name = "onboarding_session",
+       indexes = @Index(name = "idx_session_phone_created", 
+       columnList = "phone, createdAt"))
 @Getter
 @Setter
 @NoArgsConstructor

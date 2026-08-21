@@ -5,15 +5,46 @@ services:
       POSTGRES_DB: onboarding
       POSTGRES_USER: onboarding
       POSTGRES_PASSWORD: onboarding
+    command: >
+      postgres -c shared_buffers=64MB -c max_connections=30
+               -c work_mem=4MB -c maintenance_work_mem=32MB
+               -c effective_cache_size=128MB
     ports:
       - "5432:5432"
     volumes:
       - onboarding-pg-data:/var/lib/postgresql/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onboarding"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:7-alpine
+    command: redis-server --maxmemory 32mb --maxmemory-policy allkeys-lru --save ""
     ports:
       - "6379:6379"
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onboarding
+      SPRING_DATA_REDIS_HOST: redis
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 448m
 
 volumes:
   onboarding-pg-data:

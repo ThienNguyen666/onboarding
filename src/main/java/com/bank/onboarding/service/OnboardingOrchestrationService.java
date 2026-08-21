@@ -142,7 +142,8 @@ public class OnboardingOrchestrationService {
             resumePhase = SessionPhase.OCR;
         }
 
-        Optional<OnboardingSession> previous = sessionRepository.findTopByPhoneOrderByCreatedAtDesc(phone);
+        Optional<OnboardingSession> previous =
+            sessionRepository.findTopByPhoneAndIdNotOrderByCreatedAtDesc(phone, session.getId());        
         if (previous.isPresent()) {
             copyProgress(session, previous.get());
             log.info("Resuming dropoff: phone={} newSession={} fromSession={} resumePhase={}",
