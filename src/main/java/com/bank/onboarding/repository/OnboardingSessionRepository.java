@@ -7,7 +7,6 @@ import java.util.Optional;
 import java.util.List;
 
 public interface OnboardingSessionRepository extends JpaRepository<OnboardingSession, String> {
-    Optional<OnboardingSession> findTopByPhoneOrderByCreatedAtDesc(String phone);
     Optional<OnboardingSession> findTopByPhoneAndIdNotOrderByCreatedAtDesc(String phone, String id);
     List<OnboardingSession> findTop20ByOrderByCreatedAtDesc();
 }

@@ -200,7 +200,9 @@ public class OnboardingOrchestrationService {
                 properties.retry().defaultMaxLivenessRetries(), req,
                 (session, passed) -> {
                     session.setLivenessPassed(passed);
-                    session.setLivenessData(mockEkycService.mockLivenessData(req.mockPayload()));
+                    if(passed){
+                        session.setLivenessData(mockEkycService.mockLivenessData(req.mockPayload()));
+                    }
                 });
     }
 

@@ -34,6 +34,7 @@ services:
 
   app:
     build: .
+    profiles: ["full"]
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onboarding
       SPRING_DATA_REDIS_HOST: redis

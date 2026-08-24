@@ -1,47 +1,83 @@
-# Onboarding eKYC (prototype) — Spring Boot
+# 🏦 VietBank eKYC Onboarding — Prototype
 
-Backend mô phỏng luồng mở tài khoản NTB qua SDK vendor (`vendor_sdk_ekyc_account_opening_2.json`,
-xem thêm `SDK_NHNT_drawio.png`). Không chạy Orkes Conductor thật — mỗi "Phase" trong workflow gốc
-được ánh xạ thành 1 REST endpoint + 1 state machine field trên bảng `onboarding_session`.
+> Mô phỏng luồng **mở tài khoản NTB qua SDK vendor** (chính chủ bank), dựa trên workflow gốc Orkes Conductor
+> `vendor_sdk_ekyc_account_opening_2.json`. Backend Spring Boot đóng vai trò **state machine thay Conductor**,
+> đi kèm FE demo dạng "điện thoại giả lập" để test trực quan cả luồng mà không cần Postman.
 
-## 1. Review workflow gốc & những gì đã tinh gọn cho prototype
+`Spring Boot 4.1` · `Java 21` · `PostgreSQL` · `Redis` · `React (demo FE)`
+
+---
+
+## 📱 Xem trước
+
+FE demo là 1 khung điện thoại giả lập + **QA Console** (drawer bên phải) để:
+- Ép FAIL từng bước OCR/Liveness/NFC → test retry & termination
+- Ép kết quả compliance (SUCCESS / NEED_REVIEW / FAILED) không cần đoán SĐT
+- Xem OTP trực tiếp (debug endpoint) thay vì cắm SMS gateway thật
+- Giả lập dropoff (thoát app giữa chừng) rồi resume lại đúng bước cũ
+- Xoá sạch dữ liệu demo để test lại từ đầu
+
+## 🧭 Tại sao có project này?
+
+Đội ngũ đang build workflow thật trên **Orkes Cloud (Apache Conductor)** cho luồng mở tài khoản eKYC.
+Trước khi cắm vendor thật (OCR/Liveness/NFC/C06) và Conductor engine thật, project này giúp:
+
+1. **Hiểu đúng nghiệp vụ** — mọi Phase/nhánh rẽ/điều kiện dừng trong workflow JSON gốc đều được giữ nguyên tinh thần.
+2. **Demo cho stakeholder** xem trước UI/luồng mà không cần chờ tích hợp vendor.
+3. **Có sẵn state machine rõ ràng** để khi porting sang Conductor worker thật, chỉ cần thay lớp thực thi từng Phase, logic nghiệp vụ giữ nguyên.
+
+## 🏗️ Kiến trúc
+
+```
+┌─────────────┐      REST/JSON       ┌──────────────────────────┐
+│   FE Demo   │ ───────────────────▶ │   OnboardingController     │
+│  (React)    │ ◀─────────────────── │   DebugController           │
+└─────────────┘                      └───────────┬──────────────┘
+                                                   │
+                                      ┌────────────▼─────────────┐
+                                      │ OnboardingOrchestrationService │
+                                      │  (state machine thay Conductor) │
+                                      └──┬───────┬───────┬───────┘
+                                         │       │       │
+                        ┌────────────────┘  ┌────▼───┐  └──────────────┐
+                        ▼                    ▼        ▼                 ▼
+              CustomerDirectoryService  MockEkycService  OtpService  ComplianceMockService
+                        │                    │             │              │
+                        ▼                    │             ▼              │
+                  PostgreSQL ◀────────────────┴──────  Redis  ────────────┘
+             (session, customer, audit log)      (OTP TTL, dropoff cache)
+```
+
+- **PostgreSQL**: state chính thức, lâu dài (`onboarding_session`, `customer_record`, `audit_log_entry`).
+- **Redis**: chỉ dữ liệu sống ngắn — OTP tự hết hạn theo TTL, cache dropoff-by-phone.
+- **Không có Orkes/Conductor thật** — `OnboardingOrchestrationService` đóng vai trò orchestrator: mỗi method = 1 Phase, chuyển Phase được guard bằng `require(sessionId, expectedPhase)`.
+
+## 🔀 Từ workflow Orkes gốc → prototype: rút gọn những gì?
 
 | Phase gốc | Rút gọn trong bản này | Vì sao |
 |---|---|---|
-| Phase 0 — OAuth client-credential lấy AccessToken từ vendor | Sinh `accessToken` nội bộ (UUID), không gọi OAuth thật | SDK là **chính chủ bank**, không phải vendor thứ 3, nên không có hệ thống OAuth ngoài để tích hợp thật trong prototype |
-| Phase 2 — nhánh ETB gọi `handle_etb_customer` (điều hướng sang app/luồng ETB riêng) | Chỉ trả `customerType=ETB` rồi dừng, để FE tự điều hướng | Không mô phỏng app ETB trong scope này |
-| Phase 3/4/5 — `DO_WHILE` + `SET_VARIABLE` (pattern đặc thù Orkes để đọc kết quả loop) | Thay bằng counter field (`ocrRetryCount`, `livenessRetryCount`, `nfcRetryCount`) ngay trên entity, không cần `workflow.variables` | Đây là cơ chế riêng của Conductor engine — khi tự code, retry-loop là 1 field tăng dần, đơn giản hơn mà hành vi y hệt |
-| Phase 3/4/5 — gọi vendor OCR/Liveness/NFC thật | Mock: luôn PASS trừ khi request truyền `forceFail=true` | Theo đúng yêu cầu — mô phỏng để hiểu luồng nghiệp vụ, không tích hợp vendor thật |
-| Phase 5 — note "AI engine tự quyết định gọi C06 hay không" | Field `c06Called` cố định `false` trong mock NFC data | Bank không cần biết chi tiết (đúng như note gốc), và không có gateway C06 thật để gọi |
-| Phase 6a — `check_customer_type_and_age` tự derive lại ETB từ GTTT | Chỉ giữ check tuổi ≥ 18 (dữ liệu CCCD mock có DOB) | Việc re-detect ETB từ GTTT cần đối chiếu core banking thật — không có ý nghĩa để mock ở phase này khi ETB/NTB đã chốt ở Phase 2 |
-| Phase 6c — gửi OTP qua SMS gateway | Random 6 số, lưu Redis với TTL, có endpoint riêng `/debug/sessions/{id}/otp` để xem lại (dev only, tắt qua config) | Đúng yêu cầu: dễ debug, không cắm SMS gateway |
-| Phase 7 — `FORK_JOIN` chạy song song `show_result_to_customer` // `process_account_in_conductor` | Gộp tuần tự trong 1 transaction | Không có 2 hệ thống độc lập thật để chạy song song trong prototype; kết quả logic giữ nguyên |
-| Phase 7 — `process_account_in_conductor` (đẩy data vào core banking, trả SUCCESS/NEED_REVIEW/FAILED) | `ComplianceMockService`: rule theo số cuối SĐT (`8,9`→NEED_REVIEW, `0`→FAILED, còn lại→SUCCESS), hoặc ép qua `forceComplianceResult` | Giả lập "như đã đẩy data vào core banking là xong" đúng yêu cầu, nhưng vẫn cho demo đủ 3 nhánh |
-| `notify_vendor_*`, `send_ott_*` | Chỉ log ra console (`NotificationMockService`) | Không có webhook/SMS/email gateway thật |
-| Idempotency key trên `create_ebank_user`, `create_link_id` | Giữ nguyên tinh thần: mỗi `OnboardingSession.id` là idempotency key tự nhiên vì mỗi phase chỉ chạy được đúng 1 lần (guard bằng state machine `phase`/`status`) | Không cần truyền `idempotencyKey` riêng vì không có nhiều instance workflow trùng nhau cho 1 phiên |
+| Phase 0 — OAuth client-credential lấy AccessToken từ vendor | Sinh `accessToken` nội bộ (UUID) | SDK là **chính chủ bank**, không có OAuth ngoài để tích hợp thật |
+| Phase 2 — nhánh ETB `handle_etb_customer` | Trả `customerType=ETB` rồi dừng | Không mô phỏng app ETB trong scope |
+| Phase 3/4/5 — `DO_WHILE` + `SET_VARIABLE` (đặc thù Orkes) | Counter field (`ocrRetryCount`...) ngay trên entity | Cơ chế riêng của Conductor engine; tự code thì retry-loop chỉ là 1 field tăng dần |
+| Phase 3/4/5 — gọi vendor OCR/Liveness/NFC thật | Mock: luôn PASS trừ khi `forceFail=true` | Hiểu luồng nghiệp vụ, không tích hợp vendor thật |
+| Phase 6c — SMS gateway | Random 6 số, lưu Redis TTL, có endpoint debug xem lại | Dễ debug, không cắm SMS gateway |
+| Phase 7 — `FORK_JOIN` song song | Gộp tuần tự trong 1 transaction | Không có 2 hệ thống độc lập thật để chạy song song |
+| Phase 7 — `process_account_in_conductor` | `ComplianceMockService`: rule theo số cuối SĐT hoặc ép qua `forceComplianceResult` | Demo đủ 3 nhánh SUCCESS/NEED_REVIEW/FAILED |
+| `notify_vendor_*`, `send_ott_*` | Chỉ log console | Không có webhook/SMS/email gateway thật |
 
-**Giữ nguyên đúng tinh thần gốc** (không rút gọn): thứ tự phase, điều kiện dừng (device not eligible,
-OCR/Liveness/NFC hết retry, OTP sai/hết hạn, dưới 18 tuổi, ETB), dropoff resume theo SĐT, tách biệt
-NEED_REVIEW không polling trực tiếp lên session (chỉ trả trạng thái, không có vòng lặp chờ).
+**Giữ nguyên tinh thần gốc**: thứ tự phase, mọi điều kiện dừng (device not eligible, hết retry OCR/Liveness/NFC, OTP sai/hết hạn, dưới 18 tuổi, ETB), dropoff resume theo SĐT, NEED_REVIEW không polling trực tiếp lên session.
 
-## 2. Kiến trúc
-
-- **Postgres** (`onboarding_session`, `customer_record`, `audit_log_entry`): state chính thức, lâu dài.
-- **Redis**: chỉ dữ liệu sống ngắn — OTP (tự hết hạn theo TTL) và cache dropoff-by-phone.
-- Không có Orkes/Conductor — `OnboardingOrchestrationService` đóng vai trò orchestrator, mỗi method =
-  1 phase, guard chuyển phase bằng `require(sessionId, expectedPhase)`.
-
-## 3. Chạy thử
+## 🚀 Chạy thử
 
 ```bash
-docker compose up -d          # Postgres + Redis
+docker compose up -d postgres redis   # chỉ 2 service này, service "app" cần Dockerfile riêng nếu muốn container hoá
+./mvnw clean compile                  # build thử trước (sandbox review có thể bị chặn mạng tới Maven Central)
 ./mvnw spring-boot:run
 ```
 
-> Sandbox này không compile được vì mạng bị chặn tới Maven Central — hãy chạy
-> `./mvnw clean compile` ở máy bạn để build thử trước khi chạy.
+Backend chạy ở `http://localhost:8080`. Mở FE demo (`ekyc-onboarding-demo.jsx`) và trỏ `baseUrl` về địa chỉ trên — nhớ có `CorsConfig` đã bật sẵn nên gọi cross-origin không bị chặn.
 
-## 4. Thứ tự gọi API (App Vendor)
+## 📡 Thứ tự gọi API (App Vendor)
 
 ```
 POST /api/onboarding/sessions                          # Phase 0 -> sessionId, accessToken
@@ -58,7 +94,30 @@ POST /api/onboarding/sessions/{id}/otp/verify
 POST /api/onboarding/sessions/{id}/account              # Phase 7 -> SUCCESS/NEED_REVIEW/FAILED
 GET  /api/onboarding/sessions/{id}                      # trạng thái hiện tại (FE polling)
 POST /api/onboarding/sessions/{id}/dropoff              # KH thoát app giữa chừng
+GET  /api/onboarding/debug/sessions                     # (dev) 20 session gần nhất
+POST /api/onboarding/debug/reset                        # (dev) xoá sạch dữ liệu demo
 ```
 
-Test nhanh case NTB xuyên suốt bằng số điện thoại bất kỳ khác `0901111111` / `0902222222` (2 số này
-đã seed sẵn là ETB). Số cuối SĐT `8`/`9` → demo NEED_REVIEW, số cuối `0` → demo FAILED ở Phase 7.
+## 🧪 Cheat-sheet test nhanh
+
+| Muốn test gì | Làm sao |
+|---|---|
+| Nhánh khách hàng hiện hữu (ETB) | Nhập SĐT `0901111111` hoặc `0902222222` ở Phase 2 |
+| Retry & hết lượt thử (OCR/Liveness/NFC) | Bật "Ép FAIL" trong QA Console, thử 4 lần liên tiếp (mặc định max 3) |
+| Dropoff / resume đúng bước cũ | Bấm "Giả lập thoát app", mở phiên mới **cùng SĐT** |
+| Compliance NEED_REVIEW | SĐT kết thúc bằng `8`/`9`, hoặc ép trực tiếp trong QA Console |
+| Compliance FAILED | SĐT kết thúc bằng `0`, hoặc ép trực tiếp trong QA Console |
+| Dưới 18 tuổi | Chỉnh `dob` trong `mockPayload` khi gọi OCR (hoặc sửa mock trong `MockEkycService`) |
+| Reset toàn bộ demo | Nút "Xoá toàn bộ dữ liệu demo" trong QA Console |
+
+## 🗺️ Roadmap lên Orkes Cloud
+
+- [ ] Thay `OnboardingOrchestrationService` bằng Conductor worker tasks thật (mỗi method public hiện tại ↔ 1 `@WorkerTask`)
+- [ ] Áp dụng idempotency pattern (`idempotencyKey`) đúng chuẩn cho các task ghi dữ liệu non-idempotent (`create_ebank_user`, `create_link_id`)
+- [ ] Cắm vendor thật cho OCR/Liveness/NFC, gateway SMS thật cho OTP
+- [ ] Bật security cho `DebugController` hoặc gỡ hẳn trước khi lên môi trường có dữ liệu thật
+
+## ⚠️ Lưu ý trước khi lên môi trường thật
+
+- `app.onboarding.otp.debug-endpoint-enabled=true` **chỉ bật ở dev/local** — nhớ tắt trước khi deploy.
+- `CorsConfig` đang mở `allowedOriginPatterns("*")` cho tiện demo — cần siết lại domain cụ thể của app vendor.
