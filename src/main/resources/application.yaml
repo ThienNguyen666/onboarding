@@ -46,7 +46,33 @@ app:
     compliance-mock:
       # RULE_BASED (theo số cuối SĐT) hoặc RANDOM
       strategy: RULE_BASED
-
+    cors:
+      allowed-origins: ${ALLOWED_ORIGINS:*}
+      
 logging:
   level:
     com.bank.onboarding: DEBUG
+
+conductor:
+  server:
+    url: ${CONDUCTOR_SERVER_URL:https://developer.orkescloud.com/api}
+    auth-key: ${CONDUCTOR_AUTH_KEY:}
+    auth-secret: ${CONDUCTOR_AUTH_SECRET:}
+  worker:
+    thread-count: 10
+    polling-interval-ms: 100
+  workflow:
+    name: vendor_sdk_ekyc_account_opening
+    version: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+server:
+  shutdown: graceful   

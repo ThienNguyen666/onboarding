@@ -6,14 +6,16 @@ services:
       POSTGRES_USER: onboarding
       POSTGRES_PASSWORD: onboarding
     command: >
-      postgres -c shared_buffers=64MB -c max_connections=30
-               -c work_mem=4MB -c maintenance_work_mem=32MB
-               -c effective_cache_size=128MB
+      postgres -c shared_buffers=96MB -c max_connections=40
+               -c work_mem=4MB -c maintenance_work_mem=48MB
+               -c effective_cache_size=192MB
+    shm_size: 128mb
     ports:
       - "5432:5432"
     volumes:
       - onboarding-pg-data:/var/lib/postgresql/data
-    mem_limit: 256m
+    mem_limit: 320m
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U onboarding"]
       interval: 5s
@@ -22,10 +24,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 32mb --maxmemory-policy allkeys-lru --save ""
+    command: redis-server --maxmemory 48mb --maxmemory-policy allkeys-lru --save ""
+    sysctls:
+      - net.core.somaxconn=1024
     ports:
       - "6379:6379"
-    mem_limit: 64m
+    mem_limit: 80m
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -34,10 +39,13 @@ services:
 
   app:
     build: .
-    profiles: ["full"]
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onboarding
       SPRING_DATA_REDIS_HOST: redis
+      CONDUCTOR_SERVER_URL: ${CONDUCTOR_SERVER_URL:-https://developer.orkescloud.com/api}
+      CONDUCTOR_AUTH_KEY: ${CONDUCTOR_AUTH_KEY:?Thiếu CONDUCTOR_AUTH_KEY trong file .env}
+      CONDUCTOR_AUTH_SECRET: ${CONDUCTOR_AUTH_SECRET:?Thiếu CONDUCTOR_AUTH_SECRET trong file .env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
     ports:
       - "8080:8080"
     depends_on:
@@ -46,6 +54,13 @@ services:
       redis:
         condition: service_healthy
     mem_limit: 448m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   onboarding-pg-data:
