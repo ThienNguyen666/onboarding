@@ -61,6 +61,7 @@ conductor:
   worker:
     thread-count: 10
     polling-interval-ms: 100
+    auto-start: false
   workflow:
     name: vendor_sdk_ekyc_account_opening
     version: 2

@@ -16,7 +16,8 @@ public record ConductorProperties(Server server, Worker worker, Workflow workflo
 
       public record Worker(
             @Min(1) @DefaultValue("10") int threadCount,
-            @Min(50) @DefaultValue("100") int pollingIntervalMs
+            @Min(50) @DefaultValue("100") int pollingIntervalMs,
+            @DefaultValue("false") boolean autoStart
       ) {}
 
       public record Workflow(
