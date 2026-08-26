@@ -1,45 +1,46 @@
 package com.bank.onboarding.conductor;
 
 import com.bank.onboarding.config.ConductorProperties;
-import com.netflix.conductor.sdk.workflow.executor.WorkflowExecutor;
-import io.orkes.conductor.client.ApiClient;
+import com.netflix.conductor.client.automator.TaskRunnerConfigurer;
+import com.netflix.conductor.client.http.TaskClient;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 /**
- * Khởi động worker polling lên Orkes Cloud khi app start, dừng gọn khi app
- * shutdown. Chỉ chạy khi conductor.worker.auto-start=true (xem
- * ConductorProperties) — mặc định false để không cần Orkes Cloud credentials
- * ở demo local (OnboardingOrchestrationService).
+ * FIX: trước đây dùng WorkflowExecutor.initWorkers(packageName) -> SDK tự
+ * `new OnboardingConductorWorkers()` bằng reflection -> NPE vì class dùng
+ * @RequiredArgsConstructor (không có no-arg constructor). Nay dùng
+ * TaskRunnerConfigurer, truyền thẳng bean Spring đã inject đầy đủ dependency.
  */
 @Slf4j
 @Component
 @ConditionalOnProperty(prefix = "conductor.worker", name = "auto-start", havingValue = "true")
-
 public class ConductorTaskRunner implements SmartLifecycle {
 
-      private final ApiClient apiClient;
+      private final TaskClient taskClient;
       private final OnboardingConductorWorkers workers;
       private final ConductorProperties properties;
-      private WorkflowExecutor executor;
+      private TaskRunnerConfigurer configurer;
       private volatile boolean running = false;
 
-      public ConductorTaskRunner(ApiClient apiClient, OnboardingConductorWorkers workers,
+      public ConductorTaskRunner(TaskClient taskClient, OnboardingConductorWorkers workers,
                                     ConductorProperties properties) {
-            this.apiClient = apiClient;
+            this.taskClient = taskClient;
             this.workers = workers;
             this.properties = properties;
       }
 
       @Override
       public void start() {
-            executor = new WorkflowExecutor(apiClient, properties.worker().threadCount());
-            // Auto-discover @WorkerTask trong package của bean workers
-            executor.initWorkers(workers.getClass().getPackageName());
+            configurer = new TaskRunnerConfigurer.Builder(taskClient, List.of(workers))
+                  .withThreadCount(properties.worker().threadCount())
+                  .build();
+            configurer.init();
             running = true;
             log.info("Conductor worker polling STARTED — threadCount={}", properties.worker().threadCount());
       }
@@ -47,8 +48,8 @@ public class ConductorTaskRunner implements SmartLifecycle {
       @Override
       @PreDestroy
       public void stop() {
-            if (executor != null) {
-                  executor.shutdown();
+            if (configurer != null) {
+                  configurer.shutdown();
             }
             running = false;
             log.info("Conductor worker polling STOPPED");
@@ -58,5 +59,5 @@ public class ConductorTaskRunner implements SmartLifecycle {
       public boolean isRunning() { return running; }
 
       @Override
-      public int getPhase() { return Integer.MAX_VALUE; } // start sau cùng, stop đầu tiên
+      public int getPhase() { return Integer.MAX_VALUE; }
 }

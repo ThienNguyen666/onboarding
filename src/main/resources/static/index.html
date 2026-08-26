@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VietBank eKYC — Demo Console</title>
+<style>html,body,#root{margin:0;padding:0;min-height:100vh;}</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Import map: browser tự resolve "react"/"lucide-react" qua ESM CDN, không cần bundler -->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react"
+  }
+}
+</script>
+
+<!-- Babel Standalone: chỉ transpile JSX -> JS, giữ nguyên import/export (data-type=module) -->
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<script type="text/babel" data-type="module" data-presets="react" src="/ekyc-onboarding-demo.jsx"></script>
+</body>
+</html>

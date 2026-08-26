@@ -5,6 +5,12 @@ import {
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
   Eye, ListTree, PlugZap, Check,
 } from "lucide-react";
+import { createRoot } from "react-dom/client"
+
+// baseUrl: mặc định same-origin vì FE giờ được serve luôn từ Spring Boot
+const [baseUrl, setBaseUrl] = useState(
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"
+);
 
 /* ------------------------------------------------------------------ */
 /*  API layer — gọi thẳng OnboardingController / DebugController thật */
@@ -294,6 +300,34 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devOpen, devTab]);
 
+  const [conductorWorkflowId, setConductorWorkflowId] = useState(null);
+  const [conductorResult, setConductorResult] = useState(null);
+
+  const doConductorStart = () =>
+    run(async () => {
+      const res = await api(baseUrl, "/api/conductor/start", "POST", {
+        vendorClientId: "demo-client-id",
+        vendorClientSecret: "demo-client-secret",
+        sdkSessionId: form.sdkSessionId,
+        productType: form.productType,
+        deviceInfo: { model: form.deviceModel, osVersion: form.osVersion, nfcSupported: form.nfcSupported },
+        phone: form.phone,
+        otp: "",
+        vendorId: form.vendorId,
+        maxOcrRetries: 3,
+        maxLivenessRetries: 3,
+        maxNfcRetries: 3,
+      });
+      setConductorWorkflowId(res.workflowId);
+      setConductorResult(null);
+    });
+
+  const doConductorStatus = () =>
+    run(async () => {
+      const res = await api(baseUrl, `/api/conductor/${conductorWorkflowId}`);
+      setConductorResult(res);
+    });
+
   const currentPhase = status ? status.phase : "INIT";
   const isTerminated = status && status.status !== "IN_PROGRESS";
   const isEtbRedirect = isTerminated && status.terminationReason && status.terminationReason.startsWith("ETB_REDIRECT");
@@ -539,6 +573,7 @@ export default function App() {
           <button className={devTab === "controls" ? "active" : ""} onClick={() => setDevTab("controls")}>Điều khiển</button>
           <button className={devTab === "sessions" ? "active" : ""} onClick={() => setDevTab("sessions")}>Sessions</button>
           <button className={devTab === "raw" ? "active" : ""} onClick={() => setDevTab("raw")}>Raw JSON</button>
+          <button className={devTab === "orkes" ? "active" : ""} onClick={() => setDevTab("orkes")}>Orkes Cloud</button>
         </div>
 
         <div className="dev-body">
@@ -559,6 +594,31 @@ export default function App() {
                     onChange={(v) => setForceFail((f) => ({ ...f, [k]: v }))}
                   />
                 ))}
+              
+              {devTab === "orkes" && (
+                <div className="dev-section">
+                  <div className="dev-section-title">Chạy workflow THẬT trên Orkes Cloud</div>
+                  <p className="hint">
+                    Start workflow <code>vendor_sdk_ekyc_account_opening</code> trên Orkes Cloud (không phải state
+                    machine local). Yêu cầu: đã import workflow + task defs lên Orkes, backend chạy với
+                    CONDUCTOR_AUTH_KEY/SECRET hợp lệ và conductor.worker.auto-start=true.
+                  </p>
+                  <button className="dev-btn" onClick={doConductorStart} disabled={loading}>
+                    <PlugZap size={14} /> Start workflow trên Orkes Cloud
+                  </button>
+                  {conductorWorkflowId && (
+                    <>
+                      <div className="otp-peek mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
+                        workflowId: {conductorWorkflowId}
+                      </div>
+                      <button className="dev-btn" onClick={doConductorStatus} disabled={loading}>
+                        <RefreshCw size={14} /> Xem trạng thái
+                      </button>
+                    </>
+                  )}
+                  {conductorResult && <pre className="raw-json">{JSON.stringify(conductorResult, null, 2)}</pre>}
+                </div>
+              )}
               </div>
 
               <div className="dev-section">
@@ -950,4 +1010,9 @@ function StyleBlock() {
       }
     `}</style>
   );
+}
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  createRoot(rootEl).render(<App />);
 }
