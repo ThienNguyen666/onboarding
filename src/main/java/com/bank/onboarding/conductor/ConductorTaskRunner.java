@@ -1,9 +1,8 @@
 package com.bank.onboarding.conductor;
 
 import com.bank.onboarding.config.ConductorProperties;
-import com.netflix.conductor.client.automator.TaskRunnerConfigurer;
-import com.netflix.conductor.client.http.TaskClient;
-import io.orkes.conductor.client.OrkesClients;
+import com.netflix.conductor.sdk.workflow.executor.WorkflowExecutor;
+import io.orkes.conductor.client.ApiClient;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
@@ -11,37 +10,32 @@ import org.springframework.stereotype.Component;
 
 /**
  * Khởi động worker polling lên Orkes Cloud khi app start, dừng gọn khi app
- * shutdown (server.shutdown=graceful đã cấu hình ở application.yaml).
+ * shutdown. Chỉ chạy khi conductor.worker.auto-start=true (xem
+ * ConductorProperties) — mặc định false để không cần Orkes Cloud credentials
+ * ở demo local (OnboardingOrchestrationService).
  */
 @Slf4j
 @Component
 public class ConductorTaskRunner implements SmartLifecycle {
 
-      private final TaskClient taskClient;
+      private final ApiClient apiClient;
       private final OnboardingConductorWorkers workers;
       private final ConductorProperties properties;
-      private TaskRunnerConfigurer configurer;
+      private WorkflowExecutor executor;
       private volatile boolean running = false;
 
-      public ConductorTaskRunner(TaskClient taskClient, OnboardingConductorWorkers workers,
+      public ConductorTaskRunner(ApiClient apiClient, OnboardingConductorWorkers workers,
                                     ConductorProperties properties) {
-            this.taskClient = taskClient;
+            this.apiClient = apiClient;
             this.workers = workers;
             this.properties = properties;
       }
 
       @Override
       public void start() {
-            configurer = new TaskRunnerConfigurer.Builder(taskClient, java.util.List.of())
-                  .withThreadCount(properties.worker().threadCount())
-                  .build();
-            // Auto-discover @WorkerTask trên bean workers thay vì implement Worker interface thủ công
-            var executor = new com.netflix.conductor.sdk.workflow.executor.WorkflowExecutor(
-                  taskClient.getApiClient() instanceof io.orkes.conductor.client.ApiClient apiClient
-                              ? apiClient : null,
-                  properties.worker().threadCount());
+            executor = new WorkflowExecutor(apiClient, properties.worker().threadCount());
+            // Auto-discover @WorkerTask trong package của bean workers
             executor.initWorkers(workers.getClass().getPackageName());
-            configurer.init();
             running = true;
             log.info("Conductor worker polling STARTED — threadCount={}", properties.worker().threadCount());
       }
@@ -49,8 +43,8 @@ public class ConductorTaskRunner implements SmartLifecycle {
       @Override
       @PreDestroy
       public void stop() {
-            if (configurer != null) {
-                  configurer.shutdown();
+            if (executor != null) {
+                  executor.shutdown();
             }
             running = false;
             log.info("Conductor worker polling STOPPED");

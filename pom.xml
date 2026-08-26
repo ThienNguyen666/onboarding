@@ -86,6 +86,18 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.conductoross</groupId>
+			<artifactId>java-sdk</artifactId>
+			<version>${conductor-client.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>io.orkes.conductor</groupId>
+			<artifactId>orkes-conductor-client</artifactId>
+			<version>${conductor-client.version}</version>
+		</dependency>
+
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
