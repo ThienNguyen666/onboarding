@@ -39,16 +39,15 @@ app:
 
 logging:
   level:
-    com.bank.onboarding: DEBUG
+    "[com.bank.onboarding]": DEBUG
 
 conductor:
   server:
-    # Thêm dấu : để nếu thiếu biến thì fallback về chuỗi rỗng thay vì bị null cứng
     url: ${CONDUCTOR_SERVER_URL:}
     auth-key: ${CONDUCTOR_AUTH_KEY:}
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:
-    auto-start: false
+    auto-start: ${CONDUCTOR_WORKER_AUTO_START:false}
   workflow:
     name: vendor_sdk_ekyc_account_opening
     version: 2
