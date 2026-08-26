@@ -43,7 +43,8 @@ logging:
 
 conductor:
   server:
-    url: ${CONDUCTOR_SERVER_URL:https://developer.orkescloud.com/api}
+    # Thêm dấu : để nếu thiếu biến thì fallback về chuỗi rỗng thay vì bị null cứng
+    url: ${CONDUCTOR_SERVER_URL:}
     auth-key: ${CONDUCTOR_AUTH_KEY:}
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:

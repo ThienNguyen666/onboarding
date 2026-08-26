@@ -41,6 +41,16 @@ services:
     build: .
     ports:
       - "8080:8080"
+    # Tiêm trực tiếp file .env vào container
+    env_file:
+      - .env
+    # Map rõ ràng các biến môi trường
+    environment:
+      - CONDUCTOR_SERVER_URL=${CONDUCTOR_SERVER_URL}
+      - CONDUCTOR_AUTH_KEY=${CONDUCTOR_AUTH_KEY}
+      - CONDUCTOR_AUTH_SECRET=${CONDUCTOR_AUTH_SECRET}
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
     depends_on:
       postgres:
         condition: service_healthy

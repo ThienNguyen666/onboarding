@@ -1,16 +1,11 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
-  Settings2, X, RefreshCw, Trash2, Copy, ChevronRight, ChevronLeft,
+  Settings2, X, RefreshCw, Trash2, ChevronRight,
   ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
   Eye, ListTree, PlugZap, Check,
 } from "lucide-react";
-import { createRoot } from "react-dom/client"
-
-// baseUrl: mặc định same-origin vì FE giờ được serve luôn từ Spring Boot
-const [baseUrl, setBaseUrl] = useState(
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"
-);
+import { createRoot } from "react-dom/client";
 
 /* ------------------------------------------------------------------ */
 /*  API layer — gọi thẳng OnboardingController / DebugController thật */
@@ -41,7 +36,7 @@ async function api(baseUrl, path, method = "GET", body) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Phase map — song song với SessionPhase enum + swimlane (Bạn / Hệ thống) */
+/*  Phase map — song song với SessionPhase enum + swimlane             */
 /* ------------------------------------------------------------------ */
 
 const FLOW = [
@@ -113,7 +108,9 @@ function StepShell({ icon, eyebrow, title, subtitle, children }) {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const [baseUrl, setBaseUrl] = useState("http://localhost:8080");
+  const [baseUrl, setBaseUrl] = useState(
+    typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"
+  );
   const [sessionId, setSessionId] = useState(null);
   const [status, setStatus] = useState(null);
   const [extra, setExtra] = useState({});
@@ -297,7 +294,6 @@ export default function App() {
 
   useEffect(() => {
     if (devOpen && devTab === "sessions") doListRecent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devOpen, devTab]);
 
   const [conductorWorkflowId, setConductorWorkflowId] = useState(null);
@@ -594,31 +590,6 @@ export default function App() {
                     onChange={(v) => setForceFail((f) => ({ ...f, [k]: v }))}
                   />
                 ))}
-              
-              {devTab === "orkes" && (
-                <div className="dev-section">
-                  <div className="dev-section-title">Chạy workflow THẬT trên Orkes Cloud</div>
-                  <p className="hint">
-                    Start workflow <code>vendor_sdk_ekyc_account_opening</code> trên Orkes Cloud (không phải state
-                    machine local). Yêu cầu: đã import workflow + task defs lên Orkes, backend chạy với
-                    CONDUCTOR_AUTH_KEY/SECRET hợp lệ và conductor.worker.auto-start=true.
-                  </p>
-                  <button className="dev-btn" onClick={doConductorStart} disabled={loading}>
-                    <PlugZap size={14} /> Start workflow trên Orkes Cloud
-                  </button>
-                  {conductorWorkflowId && (
-                    <>
-                      <div className="otp-peek mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
-                        workflowId: {conductorWorkflowId}
-                      </div>
-                      <button className="dev-btn" onClick={doConductorStatus} disabled={loading}>
-                        <RefreshCw size={14} /> Xem trạng thái
-                      </button>
-                    </>
-                  )}
-                  {conductorResult && <pre className="raw-json">{JSON.stringify(conductorResult, null, 2)}</pre>}
-                </div>
-              )}
               </div>
 
               <div className="dev-section">
@@ -658,6 +629,31 @@ export default function App() {
                 <p className="hint">Xoá hết session, audit log, OTP trong Redis — dùng /api/onboarding/debug/reset.</p>
               </div>
             </>
+          )}
+
+          {devTab === "orkes" && (
+            <div className="dev-section">
+              <div className="dev-section-title">Chạy workflow THẬT trên Orkes Cloud</div>
+              <p className="hint">
+                Start workflow <code>vendor_sdk_ekyc_account_opening</code> trên Orkes Cloud (không phải state
+                machine local). Yêu cầu: đã import workflow + task defs lên Orkes, backend chạy với
+                CONDUCTOR_AUTH_KEY/SECRET hợp lệ và conductor.worker.auto-start=true.
+              </p>
+              <button className="dev-btn" onClick={doConductorStart} disabled={loading}>
+                <PlugZap size={14} /> Start workflow trên Orkes Cloud
+              </button>
+              {conductorWorkflowId && (
+                <>
+                  <div className="otp-peek mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
+                    workflowId: {conductorWorkflowId}
+                  </div>
+                  <button className="dev-btn" onClick={doConductorStatus} disabled={loading}>
+                    <RefreshCw size={14} /> Xem trạng thái
+                  </button>
+                </>
+              )}
+              {conductorResult && <pre className="raw-json">{JSON.stringify(conductorResult, null, 2)}</pre>}
+            </div>
           )}
 
           {devTab === "sessions" && (
