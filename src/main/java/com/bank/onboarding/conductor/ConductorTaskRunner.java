@@ -9,12 +9,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
-/**
- * FIX: bỏ hẳn TaskRunnerConfigurer + List<Worker> (luôn rỗng vì
- * OnboardingConductorWorkers không implements Worker) -> đổi sang
- * WorkflowExecutor.initWorkers(package): API chính thức của SDK để tự quét
- * @WorkerTask theo package rồi tự start polling ngay.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -39,9 +33,6 @@ public class ConductorTaskRunner implements SmartLifecycle {
 
     @Override
     public void stop() {
-        // Bản SDK hiện tại chưa expose API shutdown polling tường minh cho
-        // WorkflowExecutor (client) trong doc chính thức -> để process tự dừng
-        // theo lifecycle app khi container/app tắt, đủ dùng cho demo/dev.
         running = false;
         log.info("Conductor worker polling STOPPED (app shutting down)");
     }
