@@ -3,7 +3,7 @@ spring:
     name: onboarding
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/onboarding
+    url: jdbc:postgresql://${DB_HOST:postgres}:5432/onboarding
     username: onboarding
     password: onboarding
     driver-class-name: org.postgresql.Driver
@@ -12,20 +12,13 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
-    properties:
-      hibernate:
-        format_sql: true
     show-sql: false
 
   data:
     redis:
-      host: localhost
+      host: ${REDIS_HOST:redis}
       port: 6379
 
-# ---------------------------------------------------------------------------
-# Cấu hình nghiệp vụ cho luồng eKYC onboarding (prototype).
-# Toàn bộ giá trị mock/test đều nằm ở đây để không phải sửa code khi demo.
-# ---------------------------------------------------------------------------
 app:
   onboarding:
     retry:
@@ -36,19 +29,14 @@ app:
       length: 6
       ttl-seconds: 300
       max-verify-attempts: 5
-      # true = luôn cho xem OTP hiện tại qua endpoint debug (CHỈ bật ở dev/local!)
       debug-endpoint-enabled: true
     dropoff:
       ttl-hours: 24
     ekyc-mock:
-      # true = OCR/Liveness/NFC luôn PASS trừ khi request truyền forceFail=true
       always-pass-by-default: true
     compliance-mock:
-      # RULE_BASED (theo số cuối SĐT) hoặc RANDOM
       strategy: RULE_BASED
-    cors:
-      allowed-origins: ${ALLOWED_ORIGINS:*}
-      
+
 logging:
   level:
     com.bank.onboarding: DEBUG
@@ -59,8 +47,6 @@ conductor:
     auth-key: ${CONDUCTOR_AUTH_KEY:}
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:
-    thread-count: 10
-    polling-interval-ms: 100
     auto-start: false
   workflow:
     name: vendor_sdk_ekyc_account_opening
@@ -76,4 +62,4 @@ management:
       show-details: never
 
 server:
-  shutdown: graceful   
+  shutdown: graceful
