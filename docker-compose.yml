@@ -46,7 +46,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    mem_limit: 448m
+    mem_limit: 640m
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]

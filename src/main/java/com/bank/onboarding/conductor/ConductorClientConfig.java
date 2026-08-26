@@ -7,6 +7,7 @@ import io.orkes.conductor.client.ApiClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
 
 @Slf4j
@@ -14,6 +15,7 @@ import org.springframework.util.StringUtils;
 public class ConductorClientConfig {
 
       @Bean
+      @Lazy
       public ApiClient conductorApiClient(ConductorProperties properties) {
             var builder = ApiClient.builder().basePath(properties.server().url());
             if (StringUtils.hasText(properties.server().authKey()) && StringUtils.hasText(properties.server().authSecret())) {
@@ -27,11 +29,13 @@ public class ConductorClientConfig {
       }
 
       @Bean
+      @Lazy
       public TaskClient taskClient(ApiClient apiClient) {
             return new TaskClient(apiClient);
       }
 
       @Bean
+      @Lazy
       public WorkflowClient workflowClient(ApiClient apiClient) {
             return new WorkflowClient(apiClient);
       }

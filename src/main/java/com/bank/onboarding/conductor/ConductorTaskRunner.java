@@ -5,6 +5,8 @@ import com.netflix.conductor.sdk.workflow.executor.WorkflowExecutor;
 import io.orkes.conductor.client.ApiClient;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +18,8 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "conductor.worker", name = "auto-start", havingValue = "true")
+
 public class ConductorTaskRunner implements SmartLifecycle {
 
       private final ApiClient apiClient;
