@@ -18,8 +18,8 @@ public class WorkflowStatusMapper {
 
     private static final Set<String> HUMAN_TASK_REFS = Set.of(
             "loop_perform_ocr_ref", "loop_perform_liveness_ref",
-            "loop_perform_nfc_ref", "verify_otp_ref");
-
+            "loop_perform_nfc_ref", "verify_otp_ref",
+            "show_identity_confirmation_ref", "show_tnc_screen_ref");
     public WorkflowStatusResponse toResponse(Workflow workflow) {
         Task pending = findLatest(workflow.getTasks(),
                 t -> HUMAN_TASK_REFS.contains(t.getReferenceTaskName()) && t.getStatus() == Task.Status.IN_PROGRESS);

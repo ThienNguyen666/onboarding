@@ -45,10 +45,10 @@ conductor:
     auth-key: ${CONDUCTOR_AUTH_KEY:}
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:
-    auto-start: ${CONDUCTOR_WORKER_AUTO_START:false}
+    auto-start: ${CONDUCTOR_WORKER_AUTO_START:true}
   workflow:
     name: vendor_sdk_ekyc_account_opening
-    version: 3
+    version: 4
 
 management:
   endpoints:

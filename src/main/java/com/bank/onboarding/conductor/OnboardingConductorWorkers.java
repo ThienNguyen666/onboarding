@@ -144,7 +144,9 @@ public class OnboardingConductorWorkers {
 
       // ---------------- Phase 6 ----------------
       @WorkerTask("show_identity_confirmation")
-      public Map<String, Object> showIdentityConfirmation() { return Map.of("shown", true); }
+      public Map<String, Object> showIdentityConfirmation() {
+            return Map.of("awaitingCustomerAction", true);
+      }
 
       @WorkerTask("check_customer_type_and_age")
       public Map<String, Object> checkCustomerTypeAndAge(@InputParam("cccdData") Map<String, Object> cccdData) {
@@ -153,8 +155,9 @@ public class OnboardingConductorWorkers {
       }
 
       @WorkerTask("show_tnc_screen")
-      public Map<String, Object> showTncScreen() { return Map.of("shown", true); }
-
+      public Map<String, Object> showTncScreen() {
+            return Map.of("awaitingCustomerAction", true);
+      }
       @WorkerTask("send_otp")
       public Map<String, Object> sendOtp(@InputParam("phone") String phone) {
             String workflowSessionKey = "conductor:" + phone;
@@ -162,7 +165,7 @@ public class OnboardingConductorWorkers {
             log.info("OTP sent for phone (masked in service layer)");
             return Map.of("otpToken", otpToken);
       }
-      
+
       @WorkerTask("verify_otp")
       public Map<String, Object> verifyOtp() {
             return Map.of("awaitingCustomerAction", true);
@@ -181,9 +184,9 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> showResultToCustomer() { return Map.of("shown", true); }
 
       @WorkerTask("process_account_in_conductor")
-      public Map<String, Object> processAccountInConductor(@InputParam("customerId") String customerId) {
-            // customerId dùng làm "phone-equivalent" cho rule mock nếu cần — ở đây dùng rule ngẫu nhiên/ổn định
-            ComplianceStatus status = complianceMockService.decide(customerId, null);
+      public Map<String, Object> processAccountInConductor(@InputParam("customerId") String customerId,
+                                                            @InputParam("forceComplianceResult") String forceComplianceResult) {
+            ComplianceStatus status = complianceMockService.decide(customerId, forceComplianceResult);
             String reason = complianceMockService.failureReasonFor(status);
             return reason == null ? Map.of("status", status.name()) : Map.of("status", status.name(), "failureReason", reason);
       }

@@ -14,8 +14,8 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 /**
- * Cầu nối cho 4 task asyncComplete=true (loop_perform_ocr_ref, loop_perform_liveness_ref,
- * loop_perform_nfc_ref, verify_otp_ref) — worker chỉ "pickup", kết quả thật do FE gửi lên
+ * Cầu nối cho 6 task asyncComplete=true trong Orkes — 
+ * worker chỉ "pickup", kết quả thật do FE gửi lên
  * đây rồi backend gọi TaskClient.updateTask() để Conductor engine đi tiếp.
  */
 @Slf4j
@@ -39,6 +39,8 @@ public class ConductorTaskSignalService {
         result.setStatus(TaskResult.Status.COMPLETED); // pass/fail thật do task validate_*/SWITCH phía sau quyết định
 
         switch (taskRefName) {
+            case "show_identity_confirmation_ref" -> result.setOutputData(Map.of("confirmed", true));
+            case "show_tnc_screen_ref" -> result.setOutputData(Map.of("tncAccepted", true));
             case "loop_perform_ocr_ref" ->
                     result.setOutputData(Map.of(
                             "ocrData", mockEkycService.mockCccdData(req.outputData()),
