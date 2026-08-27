@@ -41,11 +41,11 @@ logging:
 
 conductor:
   server:
-    url: ${CONDUCTOR_SERVER_URL:}
+    url: ${CONDUCTOR_SERVER_URL:https://developer.orkescloud.com/api}
     auth-key: ${CONDUCTOR_AUTH_KEY:}
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:
-    auto-start: ${CONDUCTOR_WORKER_AUTO_START:true}
+    auto-start: ${CONDUCTOR_WORKER_AUTO_START:false}
   workflow:
     name: vendor_sdk_ekyc_account_opening
     version: 3

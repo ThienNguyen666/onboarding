@@ -162,6 +162,11 @@ public class OnboardingConductorWorkers {
             log.info("OTP sent for phone (masked in service layer)");
             return Map.of("otpToken", otpToken);
       }
+      
+      @WorkerTask("verify_otp")
+      public Map<String, Object> verifyOtp() {
+            return Map.of("awaitingCustomerAction", true);
+      }
 
       // ---------------- Phase 7 ----------------
       @WorkerTask("create_ebank_user")

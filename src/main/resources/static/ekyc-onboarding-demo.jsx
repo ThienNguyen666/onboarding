@@ -298,6 +298,29 @@ export default function App() {
 
   const [conductorWorkflowId, setConductorWorkflowId] = useState(null);
   const [conductorResult, setConductorResult] = useState(null);
+  function taskRefToForceFailKey(ref) {
+      if (ref === "loop_perform_ocr_ref") return "ocr";
+      if (ref === "loop_perform_liveness_ref") return "liveness";
+      if (ref === "loop_perform_nfc_ref") return "nfc";
+      return null;
+    }
+
+    const pollConductorStatus = useCallback(async () => {
+      if (!conductorWorkflowId) return;
+      try {
+        const res = await api(baseUrl, `/api/conductor/${conductorWorkflowId}`);
+        setConductorResult(res);
+      } catch (e) {
+        /* transient — im lặng, tránh spam banner lỗi khi đang poll nền */
+      }
+    }, [baseUrl, conductorWorkflowId]);
+
+    useEffect(() => {
+      if (!conductorWorkflowId || devTab !== "orkes") return;
+      pollConductorStatus();
+      const t = setInterval(pollConductorStatus, 3000);
+      return () => clearInterval(t);
+    }, [conductorWorkflowId, devTab, pollConductorStatus]);
 
   const doConductorStart = () =>
     run(async () => {
@@ -316,8 +339,19 @@ export default function App() {
       });
       setConductorWorkflowId(res.workflowId);
       setConductorResult(null);
+      setOtpValue("");
     });
 
+    const doConductorCompleteTask = (taskRef) =>
+      run(async () => {
+        const body =
+          taskRef === "verify_otp_ref"
+            ? { forceFail: false, outputData: { otp: otpValue } }
+            : { forceFail: !!forceFail[taskRefToForceFailKey(taskRef)], outputData: null };
+        await api(baseUrl, `/api/conductor/${conductorWorkflowId}/tasks/${taskRef}/complete`, "POST", body);
+        await pollConductorStatus();
+      });
+      
   const doConductorStatus = () =>
     run(async () => {
       const res = await api(baseUrl, `/api/conductor/${conductorWorkflowId}`);
@@ -652,7 +686,50 @@ export default function App() {
                   </button>
                 </>
               )}
-              {conductorResult && <pre className="raw-json">{JSON.stringify(conductorResult, null, 2)}</pre>}
+              {conductorResult && (
+                <>
+                  <pre className="raw-json">{JSON.stringify(conductorResult, null, 2)}</pre>
+
+                  {conductorResult.awaitingCustomerInput && (
+                    <div className="dev-section">
+                      <div className="dev-section-title">
+                        Đang chờ thao tác: {conductorResult.currentTaskRef}
+                      </div>
+
+                      {conductorResult.currentTaskRef === "verify_otp_ref" && (
+                        <input
+                          className="dev-input mono"
+                          placeholder="Nhập OTP (xem qua debug endpoint)"
+                          maxLength={8}
+                          value={otpValue}
+                          onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
+                        />
+                      )}
+
+                      {taskRefToForceFailKey(conductorResult.currentTaskRef) && (
+                        <Toggle
+                          label={`Ép FAIL bước ${taskRefToForceFailKey(conductorResult.currentTaskRef).toUpperCase()}`}
+                          checked={!!forceFail[taskRefToForceFailKey(conductorResult.currentTaskRef)]}
+                          onChange={(v) =>
+                            setForceFail((f) => ({
+                              ...f,
+                              [taskRefToForceFailKey(conductorResult.currentTaskRef)]: v,
+                            }))
+                          }
+                        />
+                      )}
+
+                      <button
+                        className="dev-btn"
+                        onClick={() => doConductorCompleteTask(conductorResult.currentTaskRef)}
+                        disabled={loading}
+                      >
+                        <Check size={14} /> Hoàn tất bước này
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}            
             </div>
           )}
 
