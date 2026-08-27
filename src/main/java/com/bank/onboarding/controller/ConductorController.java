@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
-/** Kích hoạt luồng chạy THẬT trên Orkes Cloud (khác với /api/onboarding/sessions demo tương tác). */
 @RestController
 @RequestMapping("/api/conductor")
 @RequiredArgsConstructor

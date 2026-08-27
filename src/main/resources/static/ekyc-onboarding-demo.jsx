@@ -1,14 +1,14 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   Settings2, X, RefreshCw, Trash2, ChevronRight,
   ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check,
+  Eye, ListTree, PlugZap, Check, TriangleAlert,
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
 
 /* ------------------------------------------------------------------ */
-/*  API layer — gọi thẳng API thật */
+/*  API layer — gọi thẳng ConductorController / DebugController thật   */
 /* ------------------------------------------------------------------ */
 
 async function api(baseUrl, path, method = "GET", body) {
@@ -36,7 +36,7 @@ async function api(baseUrl, path, method = "GET", body) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Phase map — tô progress rail             */
+/*  Phase map — tô progress rail                                       */
 /* ------------------------------------------------------------------ */
 
 const FLOW = [
@@ -52,6 +52,21 @@ const FLOW = [
   { key: "ACCOUNT_CREATION", label: "Mở tài khoản", lane: "sys" },
   { key: "DONE", label: "Hoàn tất", lane: "sys" },
 ];
+
+// 6 human-task ref phải khớp CHÍNH XÁC với WorkflowStatusMapper.HUMAN_TASK_REFS (BE)
+// và với asyncComplete=true trong workflow JSON (vendor_sdk_ekyc_account_opening).
+const HUMAN_TASK_REFS = new Set([
+  "loop_perform_ocr_ref",
+  "loop_perform_liveness_ref",
+  "loop_perform_nfc_ref",
+  "show_identity_confirmation_ref",
+  "show_tnc_screen_ref",
+  "verify_otp_ref",
+]);
+
+// Nếu 1 task KHÔNG phải human-task mà đứng RUNNING quá lâu -> nhiều khả năng
+// worker BE không poll được (regression của lỗi classpath-scan trong fat jar).
+const WORKER_STALL_WARNING_MS = 12000;
 
 function phaseIndex(key) {
   const i = FLOW.findIndex((p) => p.key === key);
@@ -87,8 +102,15 @@ function PrimaryButton({ children, onClick, disabled, loading, tone = "primary" 
   );
 }
 
-function Banner({ tone = "info", children }) {
-  return <div className={`banner banner-${tone}`}>{children}</div>;
+function Banner({ tone = "info", children, onClose }) {
+  return (
+    <div className={`banner banner-${tone}`}>
+      <span>{children}</span>
+      {onClose && (
+        <button className="banner-close" onClick={onClose}><X size={13} /></button>
+      )}
+    </div>
+  );
 }
 
 function StepShell({ icon, eyebrow, title, subtitle, children }) {
@@ -124,6 +146,11 @@ export default function App() {
   const [otpDebug, setOtpDebug] = useState(null);
   const [otpValue, setOtpValue] = useState("");
   const [tncChecked, setTncChecked] = useState(false);
+
+  // Theo dõi task hiện tại đứng bao lâu -> phát hiện worker BE không poll được
+  const [taskStalled, setTaskStalled] = useState(false);
+  const taskSinceRef = useRef(null);
+  const lastRefRef = useRef(null);
 
   const [form, setForm] = useState({
     vendorId: "VENDOR_BANK_APP",
@@ -175,6 +202,27 @@ export default function App() {
     return () => clearInterval(t);
   }, [wfId, pollStatus]);
 
+  // Phát hiện task đứng lâu bất thường: chỉ áp dụng cho task KHÔNG cần thao
+  // tác KH (awaitingCustomerInput=false) — vì đó là lúc BE worker phải tự
+  // xử lý xong trong vài trăm ms, không phải chờ người dùng.
+  useEffect(() => {
+    const ref = wf?.currentTaskRef || null;
+    if (ref !== lastRefRef.current) {
+      lastRefRef.current = ref;
+      taskSinceRef.current = Date.now();
+      setTaskStalled(false);
+    }
+    if (!wfId || !wf || wf.status !== "RUNNING" || wf.awaitingCustomerInput || !ref) {
+      setTaskStalled(false);
+      return;
+    }
+    const check = setInterval(() => {
+      const elapsed = Date.now() - (taskSinceRef.current || Date.now());
+      setTaskStalled(elapsed > WORKER_STALL_WARNING_MS);
+    }, 1000);
+    return () => clearInterval(check);
+  }, [wfId, wf]);
+
   const doStart = () =>
     run(async () => {
       const res = await api(baseUrl, "/api/conductor/start", "POST", {
@@ -195,6 +243,9 @@ export default function App() {
       setOtpValue("");
       setOtpDebug(null);
       setTncChecked(false);
+      taskSinceRef.current = Date.now();
+      lastRefRef.current = null;
+      setTaskStalled(false);
     });
 
   function taskRefToForceFailKey(ref) {
@@ -264,9 +315,15 @@ export default function App() {
 
               <div className="screen-content">
                 {error && (
-                  <Banner tone="danger">
-                    {error}
-                    <button className="banner-close" onClick={() => setError(null)}><X size={13} /></button>
+                  <Banner tone="danger" onClose={() => setError(null)}>{error}</Banner>
+                )}
+
+                {taskStalled && !terminated && (
+                  <Banner tone="warn">
+                    <TriangleAlert size={14} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} />
+                    Task <b className="mono">{wf?.currentTaskRef}</b> đang đứng lâu bất thường (&gt;{Math.round(WORKER_STALL_WARNING_MS / 1000)}s)
+                    mà không cần thao tác của bạn — nhiều khả năng worker BE không poll được task này.
+                    Kiểm tra log app (tìm dòng "Conductor worker polling STARTED") hoặc tab Task Definition trên Orkes Cloud xem có Worker nào đang active không.
                   </Banner>
                 )}
 
@@ -363,7 +420,7 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div className="phone-caption">Prototype UI — gọi trực tiếp REST API thật, không mock ở FE.</div>
+          <div className="phone-caption">Prototype UI — gọi trực tiếp REST API thật, Orkes Cloud là nguồn sự thật duy nhất cho state.</div>
         </div>
 
         {/* -------------------- SESSION PANEL (desktop) -------------------- */}
@@ -714,9 +771,10 @@ function StyleBlock() {
       .hint{font-size:12px;color:var(--ink-soft);margin:0;}
       .hint-warn{color:var(--gold);font-weight:600;}
 
-      .banner{border-radius:12px;padding:11px 14px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .banner{border-radius:12px;padding:11px 14px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;line-height:1.5;}
       .banner-info{background:#E7F6F4;color:var(--teal-dk);}
       .banner-danger{background:#FDECEC;color:#B3261E;}
+      .banner-warn{background:#FDF3E3;color:#9A6300;}
       .banner-close{background:none;border:none;cursor:pointer;color:inherit;opacity:.6;flex-shrink:0;}
 
       .toggle-row{width:100%;display:flex;align-items:center;justify-content:space-between;background:#F6F8FC;

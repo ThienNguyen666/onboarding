@@ -9,7 +9,8 @@ import com.bank.onboarding.service.*;
 import com.netflix.conductor.sdk.workflow.task.InputParam;
 import com.netflix.conductor.sdk.workflow.task.WorkerTask;
 import lombok.extern.slf4j.Slf4j;
-import com.bank.onboarding.config.SpringContext;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.Optional;
@@ -21,6 +22,8 @@ import java.util.UUID;
  * định luồng đi tiếp; ở đây chỉ trả kết quả cho từng bước.
  */
 @Slf4j
+@Component
+@RequiredArgsConstructor
 public class OnboardingConductorWorkers {
 
       private final CustomerDirectoryService customerDirectoryService;
@@ -30,16 +33,6 @@ public class OnboardingConductorWorkers {
       private final NotificationMockService notificationMockService;
       private final OnboardingSessionRepository sessionRepository;
       private final AuditLogRepository auditLogRepository;
-
-      public OnboardingConductorWorkers() {
-            this.customerDirectoryService = SpringContext.bean(CustomerDirectoryService.class);
-            this.mockEkycService = SpringContext.bean(MockEkycService.class);
-            this.otpService = SpringContext.bean(OtpService.class);
-            this.complianceMockService = SpringContext.bean(ComplianceMockService.class);
-            this.notificationMockService = SpringContext.bean(NotificationMockService.class);
-            this.sessionRepository = SpringContext.bean(OnboardingSessionRepository.class);
-            this.auditLogRepository = SpringContext.bean(AuditLogRepository.class);    
-      }
 
       // ---------------- Phase 0 ----------------
       @WorkerTask("get_vendor_access_token")
