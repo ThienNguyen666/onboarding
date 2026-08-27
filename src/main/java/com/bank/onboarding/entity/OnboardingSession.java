@@ -1,24 +1,25 @@
 package com.bank.onboarding.entity;
 
-import com.bank.onboarding.domain.ComplianceStatus;
-import com.bank.onboarding.domain.CustomerType;
-import com.bank.onboarding.domain.SessionPhase;
-import com.bank.onboarding.domain.SessionStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Sau khi chuyển state machine sang Orkes Conductor, entity này KHÔNG còn giữ
+ * phase/retry-count/otpVerified... — Orkes workflow instance là nguồn sự thật
+ * duy nhất cho state (query qua WorkflowClient.getWorkflow()). Entity chỉ còn
+ * vai trò bảng mapping mỏng phone -> workflowId mới nhất, phục vụ:
+ *  - FE tra lại workflowId khi mất (refresh trang / đổi thiết bị)
+ *  - check_dropoff worker tìm workflow cũ theo phone
+ *  - QA Console liệt kê session gần đây (DebugController)
+ */
 @Entity
 @Table(name = "onboarding_session",
-       indexes = @Index(name = "idx_session_phone_created", 
-       columnList = "phone, createdAt"))
+       indexes = @Index(name = "idx_session_phone_created", columnList = "phone, createdAt"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,71 +29,21 @@ public class OnboardingSession {
     @Column(length = 36)
     private String id = UUID.randomUUID().toString();
 
-    // ---- Phase 0 ----
+    @Column(nullable = false, unique = true)
+    private String workflowId;
+
     @Column(nullable = false)
     private String vendorId;
-    private String sdkSessionId;
-    private String productType;
-    private String accessToken;
 
-    // ---- Phase 1 ---- (đơn giản hoá: 3 field DeviceCheckRequest, không cần blob JSON)
-    private String deviceModel;
-    private String deviceOsVersion;
-    private Boolean deviceNfcSupported;
-    private Boolean deviceEligible;
-
-    // ---- Phase 2 ----
     private String phone;
-    private String customerId;
-    @Enumerated(EnumType.STRING)
-    private CustomerType customerType;
-    private boolean dropoff = false;
 
-    // ---- Phase 3: OCR ----
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> cccdData;
-    private int ocrRetryCount = 0;
-    private Boolean ocrPassed;
-
-    // ---- Phase 4: Liveness ----
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> livenessData;
-    private int livenessRetryCount = 0;
-    private Boolean livenessPassed;
-
-    // ---- Phase 5: NFC ----
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> nfcData;
-    private int nfcRetryCount = 0;
-    private Boolean nfcPassed;
-
-    // ---- Phase 6: identity / TnC / OTP ----
-    private boolean identityConfirmed = false;
-    private boolean tncAccepted = false;
-    private String otpTokenRef;
-    private boolean otpVerified = false;
-
-    // ---- Phase 7: account creation ----
-    private String ebankUserId;
-    private String accountNumber;
-    private String linkId;
-    @Enumerated(EnumType.STRING)
-    private ComplianceStatus complianceStatus;
-    private String failureReason;
-
-    // ---- state machine bookkeeping ----
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private SessionPhase phase = SessionPhase.INIT;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private SessionStatus status = SessionStatus.IN_PROGRESS;
-
-    private String terminationReason;
+    /**
+     * Cache trạng thái cuối nhận từ Orkes — CHỈ để hiển thị nhanh trong QA
+     * Console/debug list, KHÔNG dùng để quyết định business logic (mọi
+     * quyết định luồng phải đọc trực tiếp từ Workflow.getStatus()).
+     * Được set bởi audit_log_final_result worker khi workflow kết thúc.
+     */
+    private String lastKnownStatus;
 
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
@@ -105,9 +56,9 @@ public class OnboardingSession {
         this.updatedAt = Instant.now();
     }
 
-    public void terminate(SessionStatus status, String reason) {
-        this.status = status;
-        this.terminationReason = reason;
-        this.phase = SessionPhase.DONE;
+    public OnboardingSession(String workflowId, String vendorId, String phone) {
+        this.workflowId = workflowId;
+        this.vendorId = vendorId;
+        this.phone = phone;
     }
 }
