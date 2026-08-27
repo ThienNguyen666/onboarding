@@ -39,4 +39,10 @@ public class ConductorClientConfig {
       public WorkflowClient workflowClient(ApiClient apiClient) {
             return new WorkflowClient(apiClient);
       }
+      
+      @Bean
+      @Lazy
+      public com.netflix.conductor.client.http.MetadataClient metadataClient(ApiClient apiClient) {
+            return new com.netflix.conductor.client.http.MetadataClient(apiClient);
+      }
 }

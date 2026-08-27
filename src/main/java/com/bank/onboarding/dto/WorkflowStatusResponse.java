@@ -9,10 +9,12 @@ import java.util.Map;
  */
 public record WorkflowStatusResponse(
         String workflowId,
-        String status,              // RUNNING | COMPLETED | FAILED | TERMINATED | PAUSED
+        String status,  // RUNNING | COMPLETED | FAILED | TERMINATED | PAUSED
         String currentTaskRef,
         String pendingTaskId,
         boolean awaitingCustomerInput,
         Map<String, Object> output,
-        String reasonForIncompletion
+        String reasonForIncompletion,
+        Integer retryIteration,
+        Integer retryMax
 ) {}

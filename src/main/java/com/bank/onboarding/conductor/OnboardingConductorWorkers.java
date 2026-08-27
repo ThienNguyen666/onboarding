@@ -16,11 +16,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Toàn bộ SIMPLE task trong workflow Orkes — implement thật, không còn state
- * machine tự viết. Orkes engine (SWITCH/DO_WHILE/TERMINATE/FORK_JOIN) quyết
- * định luồng đi tiếp; ở đây chỉ trả kết quả cho từng bước.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor

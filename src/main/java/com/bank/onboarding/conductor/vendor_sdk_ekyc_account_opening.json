@@ -1,0 +1,1427 @@
+{
+  "createTime": 1787800736970,
+  "updateTime": 1787796449012,
+  "name": "vendor_sdk_ekyc_account_opening",
+  "description": "Luồng mở tài khoản eKYC qua SDK (App mobile bank): Phase 0 khởi tạo SDK + AccessToken -> Phase 1 kiểm tra thiết bị/NFC -> Phase 2 xác định KH NTB/ETB + Dropoff -> Phase 3 OCR CCCD (retry) -> Phase 4 Liveness (retry) -> Phase 5 NFC (retry) -> Phase 6 định danh + TnC + OTP -> Phase 7 tạo tài khoản + xử lý compliance (SUCCESS/NEED_REVIEW/FAILED). v4: 4 task human-interaction (perform_ocr_cccd, perform_liveness, perform_nfc, verify_otp) chuyển sang asyncComplete=true — worker chỉ khởi tạo task, FE gọi TaskClient.updateTask() qua /api/conductor/{workflowId}/tasks/{taskRef}/complete khi KH thao tác xong.",
+  "version": 4,
+  "tasks": [
+    {
+      "name": "get_vendor_access_token",
+      "taskReferenceName": "get_vendor_access_token_ref",
+      "description": "Phase 0: App mobile bank gọi lấy AccessToken (OAuth client-credential nội bộ) để mở SDK",
+      "inputParameters": {
+        "clientId": "${workflow.input.vendorClientId}",
+        "clientSecret": "${workflow.input.vendorClientSecret}",
+        "grantType": "client_credentials"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "show_cvp_and_confirm_consent",
+      "taskReferenceName": "show_cvp_ref",
+      "description": "Phase 0: SDK hiển thị CVP (Consent/Verification Page), KH xác nhận NHĐ13 + bấm Mở TK ngay",
+      "inputParameters": {
+        "accessToken": "${get_vendor_access_token_ref.output.accessToken}",
+        "sdkSessionId": "${workflow.input.sdkSessionId}",
+        "productType": "${workflow.input.productType}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_device_and_nfc",
+      "taskReferenceName": "check_device_ref",
+      "description": "Phase 1: Bank kiểm tra thiết bị thỏa rules + hỗ trợ NFC",
+      "inputParameters": {
+        "accessToken": "${get_vendor_access_token_ref.output.accessToken}",
+        "deviceInfo": "${workflow.input.deviceInfo}",
+        "sdkSessionId": "${workflow.input.sdkSessionId}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_device_nfc_result",
+      "taskReferenceName": "check_device_nfc_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${check_device_ref.output.device_eligible}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "false": [
+          {
+            "name": "terminate_device_not_eligible",
+            "taskReferenceName": "terminate_device_not_eligible_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "Thiết bị không thỏa điều kiện hoặc không hỗ trợ NFC"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "collect_phone_number",
+      "taskReferenceName": "collect_phone_number_ref",
+      "inputParameters": {
+        "prompt": "Nhập số điện thoại",
+        "phone": "${workflow.input.phone}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_customer_by_phone",
+      "taskReferenceName": "check_customer_by_phone_ref",
+      "inputParameters": {
+        "phone": "${collect_phone_number_ref.output.phone}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "route_etb_ntb",
+      "taskReferenceName": "route_etb_ntb_ref",
+      "inputParameters": {
+        "switchCaseValue": "${check_customer_by_phone_ref.output.customerType}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "ETB": [
+          {
+            "name": "handle_etb_customer",
+            "taskReferenceName": "handle_etb_customer_ref",
+            "inputParameters": {
+              "phone": "${collect_phone_number_ref.output.phone}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          },
+          {
+            "name": "terminate_etb_redirect",
+            "taskReferenceName": "terminate_etb_redirect_ref",
+            "inputParameters": {
+              "terminationStatus": "COMPLETED",
+              "terminationReason": "ETB_REDIRECT: KH đã có tài khoản, điều hướng sang luồng ETB (không tính vào tỷ lệ mở TK thành công NTB)"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ],
+        "NTB": [
+          {
+            "name": "check_dropoff",
+            "taskReferenceName": "check_dropoff_ref",
+            "inputParameters": {
+              "phone": "${collect_phone_number_ref.output.phone}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          },
+          {
+            "name": "route_dropoff",
+            "taskReferenceName": "route_dropoff_ref",
+            "inputParameters": {
+              "switchCaseValue": "${check_dropoff_ref.output.isDropoff}"
+            },
+            "type": "SWITCH",
+            "decisionCases": {
+              "true": [
+                {
+                  "name": "show_dropoff_screen",
+                  "taskReferenceName": "show_dropoff_screen_ref",
+                  "inputParameters": {
+                    "dropoffData": "${check_dropoff_ref.output.dropoffData}",
+                    "resumeStep": "${check_dropoff_ref.output.resumeStep}"
+                  },
+                  "type": "SIMPLE",
+                  "decisionCases": {},
+                  "defaultCase": [],
+                  "forkTasks": [],
+                  "startDelay": 0,
+                  "joinOn": [],
+                  "optional": false,
+                  "defaultExclusiveJoinTask": [],
+                  "asyncComplete": false,
+                  "loopOver": [],
+                  "onStateChange": {},
+                  "permissive": false,
+                  "metadata": {}
+                }
+              ]
+            },
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "evaluatorType": "value-param",
+            "expression": "switchCaseValue",
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [
+        {
+          "name": "terminate_unknown_customer_type",
+          "taskReferenceName": "terminate_unknown_customer_type_ref",
+          "inputParameters": {
+            "terminationStatus": "FAILED",
+            "terminationReason": "Không xác định được loại khách hàng"
+          },
+          "type": "TERMINATE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        }
+      ],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "ocr_cccd_retry_loop",
+      "taskReferenceName": "ocr_cccd_retry_loop_ref",
+      "description": "Phase 3: OCR CCCD 2 mặt, retry tối đa maxOcrRetries lần (mặc định 3). Kết quả cuối cùng được lưu vào workflow.variables (ocrPassed, cccdData) qua SET_VARIABLE — đây là pattern chính thức Orkes khuyến nghị để đọc kết quả loop ở các task phía sau.",
+      "inputParameters": {
+        "maxRetries": "${workflow.input.maxOcrRetries}"
+      },
+      "type": "DO_WHILE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopCondition": "(function () { if ($.loop_validate_ocr_ref['passed'] == true) { return false; } if ($.ocr_cccd_retry_loop_ref['iteration'] >= $.maxRetries) { return false; } return true; })();",
+      "loopOver": [
+        {
+          "name": "show_ocr_guide",
+          "taskReferenceName": "loop_show_ocr_guide_ref",
+          "inputParameters": {
+            "step": "OCR_FRONT_BACK",
+            "iteration": "${ocr_cccd_retry_loop_ref.output.iteration}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "perform_ocr_cccd",
+          "taskReferenceName": "loop_perform_ocr_ref",
+          "inputParameters": {
+            "customerId": "${check_customer_by_phone_ref.output.customerId}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": true,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "validate_ocr",
+          "taskReferenceName": "loop_validate_ocr_ref",
+          "inputParameters": {
+            "ocrData": "${loop_perform_ocr_ref.output.ocrData}",
+            "customerId": "${check_customer_by_phone_ref.output.customerId}",
+            "forceFail": "${loop_perform_ocr_ref.output.forceFail}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "save_ocr_result",
+          "taskReferenceName": "save_ocr_result_ref",
+          "inputParameters": {
+            "ocrPassed": "${loop_validate_ocr_ref.output.passed}",
+            "cccdData": "${loop_validate_ocr_ref.output.cccdData}"
+          },
+          "type": "SET_VARIABLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        }
+      ],
+      "evaluatorType": "graaljs",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_ocr_final_result",
+      "taskReferenceName": "check_ocr_final_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${workflow.variables.ocrPassed}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "false": [
+          {
+            "name": "terminate_ocr_failed",
+            "taskReferenceName": "terminate_ocr_failed_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "OCR CCCD thất bại sau tối đa số lần thử lại"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "liveness_retry_loop",
+      "taskReferenceName": "liveness_retry_loop_ref",
+      "description": "Phase 4: Liveness check, retry tối đa maxLivenessRetries lần (mặc định 3).",
+      "inputParameters": {
+        "maxRetries": "${workflow.input.maxLivenessRetries}"
+      },
+      "type": "DO_WHILE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopCondition": "(function () { if ($.loop_validate_liveness_ref['passed'] == true) { return false; } if ($.liveness_retry_loop_ref['iteration'] >= $.maxRetries) { return false; } return true; })();",
+      "loopOver": [
+        {
+          "name": "show_liveness_guide",
+          "taskReferenceName": "loop_show_liveness_guide_ref",
+          "inputParameters": {
+            "step": "LIVENESS",
+            "iteration": "${liveness_retry_loop_ref.output.iteration}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "perform_liveness",
+          "taskReferenceName": "loop_perform_liveness_ref",
+          "inputParameters": {
+            "customerId": "${check_customer_by_phone_ref.output.customerId}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": true,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "validate_liveness",
+          "taskReferenceName": "loop_validate_liveness_ref",
+          "inputParameters": {
+            "livenessData": "${loop_perform_liveness_ref.output.livenessData}",
+            "customerId": "${check_customer_by_phone_ref.output.customerId}",
+            "forceFail": "${loop_perform_liveness_ref.output.forceFail}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "save_liveness_result",
+          "taskReferenceName": "save_liveness_result_ref",
+          "inputParameters": {
+            "livenessPassed": "${loop_validate_liveness_ref.output.passed}",
+            "livenessData": "${loop_validate_liveness_ref.output.livenessData}"
+          },
+          "type": "SET_VARIABLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        }
+      ],
+      "evaluatorType": "graaljs",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_liveness_final_result",
+      "taskReferenceName": "check_liveness_final_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${workflow.variables.livenessPassed}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "false": [
+          {
+            "name": "terminate_liveness_failed",
+            "taskReferenceName": "terminate_liveness_failed_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "Liveness thất bại sau tối đa số lần thử lại"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "nfc_retry_loop",
+      "taskReferenceName": "nfc_retry_loop_ref",
+      "description": "Phase 5: NFC chip CCCD, retry tối đa maxNfcRetries lần (mặc định 3).",
+      "inputParameters": {
+        "maxRetries": "${workflow.input.maxNfcRetries}"
+      },
+      "type": "DO_WHILE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopCondition": "(function () { if ($.loop_validate_nfc_ref['passed'] == true) { return false; } if ($.nfc_retry_loop_ref['iteration'] >= $.maxRetries) { return false; } return true; })();",
+      "loopOver": [
+        {
+          "name": "show_nfc_guide",
+          "taskReferenceName": "loop_show_nfc_guide_ref",
+          "inputParameters": {
+            "step": "NFC",
+            "iteration": "${nfc_retry_loop_ref.output.iteration}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "perform_nfc",
+          "taskReferenceName": "loop_perform_nfc_ref",
+          "inputParameters": {
+            "customerId": "${check_customer_by_phone_ref.output.customerId}",
+            "cccdData": "${workflow.variables.cccdData}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": true,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "validate_nfc",
+          "taskReferenceName": "loop_validate_nfc_ref",
+          "description": "AI engine (HV) tự quyết định gọi C06 hay không khi cache dữ liệu dân cư miss — Bank không cần biết chi tiết",
+          "inputParameters": {
+            "nfcData": "${loop_perform_nfc_ref.output.nfcData}",
+            "customerId": "${check_customer_by_phone_ref.output.customerId}",
+            "forceFail": "${loop_perform_nfc_ref.output.forceFail}"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        },
+        {
+          "name": "save_nfc_result",
+          "taskReferenceName": "save_nfc_result_ref",
+          "inputParameters": {
+            "nfcPassed": "${loop_validate_nfc_ref.output.passed}",
+            "nfcData": "${loop_validate_nfc_ref.output.nfcData}"
+          },
+          "type": "SET_VARIABLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        }
+      ],
+      "evaluatorType": "graaljs",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_nfc_final_result",
+      "taskReferenceName": "check_nfc_final_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${workflow.variables.nfcPassed}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "false": [
+          {
+            "name": "terminate_nfc_failed",
+            "taskReferenceName": "terminate_nfc_failed_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "NFC thất bại sau tối đa số lần thử lại"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "show_identity_confirmation",
+      "taskReferenceName": "show_identity_confirmation_ref",
+      "inputParameters": {
+        "cccdData": "${workflow.variables.cccdData}",
+        "nfcData": "${workflow.variables.nfcData}",
+        "customerId": "${check_customer_by_phone_ref.output.customerId}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": true,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_customer_type_and_age",
+      "taskReferenceName": "check_customer_type_and_age_ref",
+      "description": "Kiểm tra loại KH theo thông tin GTTT và tuổi >= 18",
+      "inputParameters": {
+        "cccdData": "${workflow.variables.cccdData}",
+        "nfcData": "${workflow.variables.nfcData}",
+        "customerId": "${check_customer_by_phone_ref.output.customerId}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "route_identity_check_result",
+      "taskReferenceName": "route_identity_check_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${check_customer_type_and_age_ref.output.customerType}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "ETB": [
+          {
+            "name": "terminate_identity_etb_error",
+            "taskReferenceName": "terminate_identity_etb_error_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "KH được xác định là ETB hoặc thông tin GTTT không hợp lệ"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ],
+        "UNDERAGE": [
+          {
+            "name": "terminate_underage_error",
+            "taskReferenceName": "terminate_underage_error_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "KH chưa đủ 18 tuổi, không đủ điều kiện mở tài khoản"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "show_tnc_screen",
+      "taskReferenceName": "show_tnc_screen_ref",
+      "description": "TnC hiển thị khác nhau theo sản phẩm: chỉ TKTT hoặc combo TKTT + Debit card",
+      "inputParameters": {
+        "customerId": "${check_customer_by_phone_ref.output.customerId}",
+        "productType": "${workflow.input.productType}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": true,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "send_otp",
+      "taskReferenceName": "send_otp_ref",
+      "inputParameters": {
+        "phone": "${collect_phone_number_ref.output.phone}",
+        "customerId": "${check_customer_by_phone_ref.output.customerId}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "verify_otp",
+      "taskReferenceName": "verify_otp_ref",
+      "inputParameters": {
+        "phone": "${collect_phone_number_ref.output.phone}",
+        "otp": "${workflow.input.otp}",
+        "otpToken": "${send_otp_ref.output.otpToken}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": true,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "check_otp_result",
+      "taskReferenceName": "check_otp_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${verify_otp_ref.output.verified}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "false": [
+          {
+            "name": "terminate_otp_failed",
+            "taskReferenceName": "terminate_otp_failed_ref",
+            "inputParameters": {
+              "terminationStatus": "FAILED",
+              "terminationReason": "OTP không hợp lệ hoặc hết hạn"
+            },
+            "type": "TERMINATE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "create_ebank_user",
+      "taskReferenceName": "create_ebank_user_ref",
+      "description": "GHI DỮ LIỆU — non-idempotent. Bắt buộc truyền idempotencyKey để service dedupe, và taskdef retryCount=0 (xem task_definitions.json)",
+      "inputParameters": {
+        "customerId": "${check_customer_by_phone_ref.output.customerId}",
+        "phone": "${collect_phone_number_ref.output.phone}",
+        "cccdData": "${workflow.variables.cccdData}",
+        "nfcData": "${workflow.variables.nfcData}",
+        "livenessData": "${workflow.variables.livenessData}",
+        "productType": "${workflow.input.productType}",
+        "tncAccepted": true,
+        "idempotencyKey": "${workflow.workflowId}-create-user"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "parallel_show_result_and_conductor_processing",
+      "taskReferenceName": "parallel_phase7_fork_ref",
+      "inputParameters": {},
+      "type": "FORK_JOIN",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [
+        [
+          {
+            "name": "show_result_to_customer",
+            "taskReferenceName": "show_result_to_customer_ref",
+            "inputParameters": {
+              "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
+              "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "productType": "${workflow.input.productType}"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ],
+        [
+          {
+            "name": "process_account_in_conductor",
+            "taskReferenceName": "process_account_in_conductor_ref",
+            "description": "Xử lý compliance/nhóm KH. Trả về status = SUCCESS | NEED_REVIEW | FAILED. NEED_REVIEW không dùng WAIT task ở đây — theo quyết định dùng polling ở tầng FE/bảng ticket riêng (không polling trực tiếp lên workflow instance)",
+            "inputParameters": {
+              "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
+              "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "productType": "${workflow.input.productType}",
+              "forceComplianceResult": "${workflow.input.forceComplianceResult}"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      ],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "join_phase7",
+      "taskReferenceName": "join_phase7_ref",
+      "inputParameters": {},
+      "type": "JOIN",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [
+        "show_result_to_customer_ref",
+        "process_account_in_conductor_ref"
+      ],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "route_final_conductor_result",
+      "taskReferenceName": "route_final_conductor_result_ref",
+      "inputParameters": {
+        "switchCaseValue": "${process_account_in_conductor_ref.output.status}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "SUCCESS": [
+          {
+            "name": "create_link_id",
+            "taskReferenceName": "create_link_id_ref",
+            "inputParameters": {
+              "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "idempotencyKey": "${workflow.workflowId}-create-link"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          },
+          {
+            "name": "notify_vendor_success",
+            "taskReferenceName": "notify_vendor_success_ref",
+            "inputParameters": {
+              "vendorId": "${workflow.input.vendorId}",
+              "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
+              "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
+              "status": "SUCCESS"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          },
+          {
+            "name": "send_ott_success",
+            "taskReferenceName": "send_ott_success_ref",
+            "inputParameters": {
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
+              "templateId": "ACCOUNT_OPEN_SUCCESS"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ],
+        "NEED_REVIEW": [
+          {
+            "name": "notify_vendor_need_review",
+            "taskReferenceName": "notify_vendor_need_review_ref",
+            "description": "Vendor sẽ nhận cập nhật khi review xong qua callback riêng của bảng ticket, không qua chính workflow instance này",
+            "inputParameters": {
+              "vendorId": "${workflow.input.vendorId}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "status": "NEED_REVIEW"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          },
+          {
+            "name": "send_ott_need_review",
+            "taskReferenceName": "send_ott_need_review_ref",
+            "inputParameters": {
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "templateId": "ACCOUNT_PENDING_REVIEW"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ],
+        "FAILED": [
+          {
+            "name": "notify_vendor_failed",
+            "taskReferenceName": "notify_vendor_failed_ref",
+            "inputParameters": {
+              "vendorId": "${workflow.input.vendorId}",
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "status": "FAILED",
+              "reason": "${process_account_in_conductor_ref.output.failureReason}"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          },
+          {
+            "name": "send_ott_failed",
+            "taskReferenceName": "send_ott_failed_ref",
+            "inputParameters": {
+              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "templateId": "ACCOUNT_OPEN_FAILED"
+            },
+            "type": "SIMPLE",
+            "decisionCases": {},
+            "defaultCase": [],
+            "forkTasks": [],
+            "startDelay": 0,
+            "joinOn": [],
+            "optional": false,
+            "defaultExclusiveJoinTask": [],
+            "asyncComplete": false,
+            "loopOver": [],
+            "onStateChange": {},
+            "permissive": false,
+            "metadata": {}
+          }
+        ]
+      },
+      "defaultCase": [
+        {
+          "name": "notify_vendor_unknown_error",
+          "taskReferenceName": "notify_vendor_unknown_error_ref",
+          "inputParameters": {
+            "vendorId": "${workflow.input.vendorId}",
+            "customerId": "${check_customer_by_phone_ref.output.customerId}",
+            "status": "FAILED",
+            "reason": "Unknown conductor processing result"
+          },
+          "type": "SIMPLE",
+          "decisionCases": {},
+          "defaultCase": [],
+          "forkTasks": [],
+          "startDelay": 0,
+          "joinOn": [],
+          "optional": false,
+          "defaultExclusiveJoinTask": [],
+          "asyncComplete": false,
+          "loopOver": [],
+          "onStateChange": {},
+          "permissive": false,
+          "metadata": {}
+        }
+      ],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "evaluatorType": "value-param",
+      "expression": "switchCaseValue",
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "cleanup_vendor_sdk_session",
+      "taskReferenceName": "cleanup_vendor_sdk_session_ref",
+      "description": "Giải phóng SDK session sau khi workflow hoàn tất (dù SUCCESS/NEED_REVIEW/FAILED)",
+      "inputParameters": {
+        "sdkSessionId": "${workflow.input.sdkSessionId}",
+        "accessToken": "${get_vendor_access_token_ref.output.accessToken}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    },
+    {
+      "name": "audit_log_final_result",
+      "taskReferenceName": "audit_log_final_result_ref",
+      "description": "Ghi audit log cuối luồng: tracking, compliance, BI reporting",
+      "inputParameters": {
+        "workflowId": "${workflow.workflowId}",
+        "customerId": "${check_customer_by_phone_ref.output.customerId}",
+        "phone": "${collect_phone_number_ref.output.phone}",
+        "finalStatus": "${process_account_in_conductor_ref.output.status}",
+        "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
+        "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
+        "vendorId": "${workflow.input.vendorId}",
+        "productType": "${workflow.input.productType}",
+        "failureReason": "${process_account_in_conductor_ref.output.failureReason}"
+      },
+      "type": "SIMPLE",
+      "decisionCases": {},
+      "defaultCase": [],
+      "forkTasks": [],
+      "startDelay": 0,
+      "joinOn": [],
+      "optional": false,
+      "defaultExclusiveJoinTask": [],
+      "asyncComplete": false,
+      "loopOver": [],
+      "onStateChange": {},
+      "permissive": false,
+      "metadata": {}
+    }
+  ],
+  "inputParameters": [
+    "vendorClientId",
+    "vendorClientSecret",
+    "sdkSessionId",
+    "productType",
+    "deviceInfo",
+    "phone",
+    "otp",
+    "vendorId",
+    "maxOcrRetries",
+    "maxLivenessRetries",
+    "maxNfcRetries"
+  ],
+  "outputParameters": {
+    "finalStatus": "${process_account_in_conductor_ref.output.status}",
+    "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
+    "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
+    "customerId": "${check_customer_by_phone_ref.output.customerId}",
+    "linkId": "${create_link_id_ref.output.linkId}",
+    "failureReason": "${process_account_in_conductor_ref.output.failureReason}"
+  },
+  "schemaVersion": 2,
+  "restartable": true,
+  "workflowStatusListenerEnabled": false,
+  "ownerEmail": "thanban93@gmail.com",
+  "timeoutPolicy": "TIME_OUT_WF",
+  "timeoutSeconds": 3600,
+  "variables": {},
+  "inputTemplate": {
+    "maxOcrRetries": 3,
+    "maxLivenessRetries": 3,
+    "maxNfcRetries": 3
+  },
+  "enforceSchema": false,
+  "metadata": {},
+  "maskedFields": []
+}
