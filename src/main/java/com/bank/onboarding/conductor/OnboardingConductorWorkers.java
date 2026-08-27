@@ -2,6 +2,9 @@ package com.bank.onboarding.conductor;
 
 import com.bank.onboarding.domain.ComplianceStatus;
 import com.bank.onboarding.domain.CustomerType;
+import com.bank.onboarding.entity.AuditLogEntry;
+import com.bank.onboarding.repository.AuditLogRepository;
+import com.bank.onboarding.repository.OnboardingSessionRepository;
 import com.bank.onboarding.service.*;
 import com.netflix.conductor.sdk.workflow.task.InputParam;
 import com.netflix.conductor.sdk.workflow.task.WorkerTask;
@@ -25,6 +28,8 @@ public class OnboardingConductorWorkers {
       private final OtpService otpService;
       private final ComplianceMockService complianceMockService;
       private final NotificationMockService notificationMockService;
+      private final OnboardingSessionRepository sessionRepository;
+      private final AuditLogRepository auditLogRepository;
 
       public OnboardingConductorWorkers() {
             this.customerDirectoryService = SpringContext.bean(CustomerDirectoryService.class);
@@ -32,6 +37,8 @@ public class OnboardingConductorWorkers {
             this.otpService = SpringContext.bean(OtpService.class);
             this.complianceMockService = SpringContext.bean(ComplianceMockService.class);
             this.notificationMockService = SpringContext.bean(NotificationMockService.class);
+            this.sessionRepository = SpringContext.bean(OnboardingSessionRepository.class);
+            this.auditLogRepository = SpringContext.bean(AuditLogRepository.class);    
       }
 
       // ---------------- Phase 0 ----------------
@@ -94,26 +101,29 @@ public class OnboardingConductorWorkers {
 
       @WorkerTask("perform_ocr_cccd")
       public Map<String, Object> performOcrCccd() {
-            return Map.of("ocrData", mockEkycService.mockCccdData(null));
+            return Map.of("awaitingCustomerAction", true);
       }
 
       @WorkerTask("validate_ocr")
-      public Map<String, Object> validateOcr(@InputParam("ocrData") Map<String, Object> ocrData) {
-            boolean passed = mockEkycService.decidePassed(false);
+      public Map<String, Object> validateOcr(@InputParam("ocrData") Map<String, Object> ocrData,
+                                          @InputParam("forceFail") Boolean forceFail) {
+            boolean passed = mockEkycService.decidePassed(Boolean.TRUE.equals(forceFail));
             return Map.of("passed", passed, "cccdData", passed ? ocrData : Map.of());
       }
+
 
       @WorkerTask("show_liveness_guide")
       public Map<String, Object> showLivenessGuide() { return Map.of("shown", true); }
 
       @WorkerTask("perform_liveness")
       public Map<String, Object> performLiveness() {
-            return Map.of("livenessData", mockEkycService.mockLivenessData(null));
+            return Map.of("awaitingCustomerAction", true);
       }
 
       @WorkerTask("validate_liveness")
-      public Map<String, Object> validateLiveness(@InputParam("livenessData") Map<String, Object> livenessData) {
-            boolean passed = mockEkycService.decidePassed(false);
+      public Map<String, Object> validateLiveness(@InputParam("livenessData") Map<String, Object> livenessData,
+                                                @InputParam("forceFail") Boolean forceFail) {
+            boolean passed = mockEkycService.decidePassed(Boolean.TRUE.equals(forceFail));
             return Map.of("passed", passed, "livenessData", passed ? livenessData : Map.of());
       }
 
@@ -122,12 +132,13 @@ public class OnboardingConductorWorkers {
 
       @WorkerTask("perform_nfc")
       public Map<String, Object> performNfc() {
-            return Map.of("nfcData", mockEkycService.mockNfcData(null));
+            return Map.of("awaitingCustomerAction", true);
       }
 
       @WorkerTask("validate_nfc")
-      public Map<String, Object> validateNfc(@InputParam("nfcData") Map<String, Object> nfcData) {
-            boolean passed = mockEkycService.decidePassed(false);
+      public Map<String, Object> validateNfc(@InputParam("nfcData") Map<String, Object> nfcData,
+                                          @InputParam("forceFail") Boolean forceFail) {
+            boolean passed = mockEkycService.decidePassed(Boolean.TRUE.equals(forceFail));
             return Map.of("passed", passed, "nfcData", passed ? nfcData : Map.of());
       }
 
@@ -150,12 +161,6 @@ public class OnboardingConductorWorkers {
             String otpToken = otpService.generateAndStore(workflowSessionKey);
             log.info("OTP sent for phone (masked in service layer)");
             return Map.of("otpToken", otpToken);
-      }
-
-      @WorkerTask("verify_otp")
-      public Map<String, Object> verifyOtp(@InputParam("phone") String phone, @InputParam("otp") String otp) {
-            boolean verified = otpService.verify("conductor:" + phone, otp);
-            return Map.of("verified", verified);
       }
 
       // ---------------- Phase 7 ----------------
@@ -237,11 +242,22 @@ public class OnboardingConductorWorkers {
 
       @WorkerTask("audit_log_final_result")
       public Map<String, Object> auditLogFinalResult(@InputParam("workflowId") String workflowId,
-                                                      @InputParam("finalStatus") String finalStatus) {
+                                                      @InputParam("finalStatus") String finalStatus,
+                                                      @InputParam("ebankUserId") String ebankUserId,
+                                                      @InputParam("accountNumber") String accountNumber,
+                                                      @InputParam("failureReason") String failureReason) {
+            sessionRepository.findByWorkflowId(workflowId).ifPresent(session -> {
+                  session.setLastKnownStatus(finalStatus);
+                  sessionRepository.save(session);
+            });
+            auditLogRepository.save(new AuditLogEntry(workflowId, "FINAL_RESULT", Map.of(
+                  "finalStatus", String.valueOf(finalStatus),
+                  "ebankUserId", String.valueOf(ebankUserId),
+                  "accountNumber", String.valueOf(accountNumber),
+                  "failureReason", failureReason == null ? "" : failureReason)));
             log.info("[AUDIT] workflowId={} finalStatus={}", workflowId, finalStatus);
             return Map.of("logged", true);
       }
-
       private String generateAccountNumber() {
             var random = new java.security.SecureRandom();
             StringBuilder sb = new StringBuilder("9");

@@ -21,6 +21,8 @@ spring:
 
 app:
   onboarding:
+    cors:
+      allowed-origins: ${ALLOWED_ORIGINS:*}
     otp:
       length: 6
       ttl-seconds: 300
@@ -46,7 +48,7 @@ conductor:
     auto-start: ${CONDUCTOR_WORKER_AUTO_START:true}
   workflow:
     name: vendor_sdk_ekyc_account_opening
-    version: 2
+    version: 3
 
 management:
   endpoints:
