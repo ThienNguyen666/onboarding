@@ -29,22 +29,28 @@ public class ConductorMetadataSyncRunner {
                   .build();
 
       @EventListener(ApplicationReadyEvent.class)
-      public void syncMetadata() throws Exception {
-            List<TaskDef> taskDefs = mapper.readValue(
-                  new ClassPathResource("conductor/task_definitions.json").getInputStream(),
-                  mapper.getTypeFactory().constructCollectionType(List.class, TaskDef.class));
-            try {
-                  metadataClient.registerTaskDefs(taskDefs);
+      public void syncMetadata() {
+            try{
+                  List<TaskDef> taskDefs = mapper.readValue(
+                        new ClassPathResource("conductor/task_definitions.json").getInputStream(),
+                        mapper.getTypeFactory().constructCollectionType(List.class, TaskDef.class));
+                  try {
+                        metadataClient.registerTaskDefs(taskDefs);
+                  } catch (Exception e) {
+                        log.warn("registerTaskDefs thất bại ({}), fallback sang updateTaskDef từng cái", e.getMessage());
+                        taskDefs.forEach(metadataClient::updateTaskDef);
+                  }
+                  log.info("Đồng bộ {} task definitions lên Orkes Cloud xong", taskDefs.size());
+      
+                  WorkflowDef workflowDef = mapper.readValue(
+                        new ClassPathResource("conductor/vendor_sdk_ekyc_account_opening.json").getInputStream(),
+                        WorkflowDef.class);
+                  metadataClient.updateWorkflowDefs(List.of(workflowDef));
+                  log.info("Đồng bộ workflow '{}' v{} lên Orkes Cloud xong (asyncComplete flags được áp dụng)",
+                        workflowDef.getName(), workflowDef.getVersion());
             } catch (Exception e) {
-                  taskDefs.forEach(metadataClient::updateTaskDef);
+                  log.error("Đồng bộ metadata lên Orkes Cloud thất bại — app vẫn chạy tiếp, " +
+                        "cần kiểm tra CONDUCTOR_SERVER_URL/AUTH hoặc import thủ công qua Orkes UI", e);     
             }
-            log.info("Đồng bộ {} task definitions lên Orkes Cloud xong", taskDefs.size());
-
-            WorkflowDef workflowDef = mapper.readValue(
-                  new ClassPathResource("conductor/vendor_sdk_ekyc_account_opening.json").getInputStream(),
-                  WorkflowDef.class);
-            metadataClient.updateWorkflowDefs(List.of(workflowDef));
-            log.info("Đồng bộ workflow '{}' v{} lên Orkes Cloud xong (asyncComplete flags được áp dụng)",
-                  workflowDef.getName(), workflowDef.getVersion());
       }
 }
