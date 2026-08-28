@@ -357,19 +357,22 @@ export default function App() {
                   <EkycStep icon={<Camera size={22} />} eyebrow="Phase 3 · OCR CCCD" title="Chụp 2 mặt CCCD"
                             subtitle="Đưa CCCD vào khung hình, giữ yên trong 2 giây."
                             onSubmit={() => doCompleteTask("loop_perform_ocr_ref")} loading={loading}
-                            actionLabel="Chụp CCCD" forceFail={forceFail.ocr} />
+                            actionLabel="Chụp CCCD" forceFail={forceFail.ocr}
+                            retryIteration={wf.retryIteration} retryMax={wf.retryMax} />
                 )}
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_liveness_ref" && (
                   <EkycStep icon={<ScanFace size={22} />} eyebrow="Phase 4 · Liveness" title="Xác thực khuôn mặt"
                             subtitle="Nhìn thẳng vào camera và làm theo hướng dẫn."
                             onSubmit={() => doCompleteTask("loop_perform_liveness_ref")} loading={loading}
-                            actionLabel="Bắt đầu quét" forceFail={forceFail.liveness} />
+                            actionLabel="Bắt đầu quét" forceFail={forceFail.liveness}
+                            retryIteration={wf.retryIteration} retryMax={wf.retryMax} />
                 )}
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_nfc_ref" && (
                   <EkycStep icon={<Radio size={22} />} eyebrow="Phase 5 · Chip NFC" title="Chạm CCCD vào mặt sau điện thoại"
                             subtitle="Giữ nguyên vị trí cho tới khi đọc xong chip."
                             onSubmit={() => doCompleteTask("loop_perform_nfc_ref")} loading={loading}
-                            actionLabel="Đọc chip NFC" forceFail={forceFail.nfc} />
+                            actionLabel="Đọc chip NFC" forceFail={forceFail.nfc}
+                            retryIteration={wf.retryIteration} retryMax={wf.retryMax} />
                 )}
 
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_identity_confirmation_ref" && (
@@ -625,7 +628,7 @@ function ProgressRail({ currentKey, terminated }) {
   );
 }
 
-function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLabel, forceFail }) {
+function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLabel, forceFail, retryIteration, retryMax }) {
   return (
     <StepShell icon={icon} eyebrow={eyebrow} title={title} subtitle={subtitle}>
       <div className="scan-frame">
@@ -634,8 +637,8 @@ function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLab
         {icon}
       </div>
       {forceFail && <p className="hint hint-warn">⚠ QA Console đang ép FAIL bước này.</p>}
-      {typeof wf?.retryIteration === "number" && (
-        <p className="hint">Lần thử {wf.retryIteration + 1}{wf.retryMax ? ` / ${wf.retryMax}` : ""}</p>
+      {typeof retryIteration === "number" && (
+        <p className="hint">Lần thử {retryIteration + 1}{retryMax ? ` / ${retryMax}` : ""}</p>
       )}
       <PrimaryButton onClick={onSubmit} loading={loading}>{actionLabel}</PrimaryButton>
     </StepShell>

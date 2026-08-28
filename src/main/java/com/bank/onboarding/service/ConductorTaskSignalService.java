@@ -82,9 +82,15 @@ public class ConductorTaskSignalService {
 
     private Task findInProgressTask(Workflow workflow, String taskRefName) {
         return workflow.getTasks().stream()
-                .filter(t -> taskRefName.equals(t.getReferenceTaskName()) && t.getStatus() == Task.Status.IN_PROGRESS)
+                .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName) && t.getStatus() == Task.Status.IN_PROGRESS)
                 .reduce((first, second) -> second)
                 .orElseThrow(() -> OnboardingException.badState(
                         "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflow.getWorkflowId()));
+    }
+
+    // Cùng gốc bug với WorkflowStatusMapper: task trong DO_WHILE có referenceTaskName runtime
+    // dạng "<ref>__<iteration>". So khớp cả 2 dạng (có/không hậu tố).
+    private boolean matchesRef(String actualRef, String expectedRef) {
+        return actualRef.equals(expectedRef) || actualRef.startsWith(expectedRef + "__");
     }
 }
