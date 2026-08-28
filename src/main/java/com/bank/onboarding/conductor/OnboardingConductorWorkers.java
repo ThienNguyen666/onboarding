@@ -96,9 +96,9 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> validateOcr(@InputParam("ocrData") Map<String, Object> ocrData,
                                           @InputParam("forceFail") Boolean forceFail) {
             boolean passed = mockEkycService.decidePassed(Boolean.TRUE.equals(forceFail));
-            return Map.of("passed", passed, "cccdData", passed ? ocrData : Map.of());
+            Map<String, Object> cccdData = (passed && ocrData != null) ? ocrData : Map.of();
+            return Map.of("passed", passed, "cccdData", cccdData);
       }
-
 
       @WorkerTask("show_liveness_guide")
       public Map<String, Object> showLivenessGuide() { return Map.of("shown", true); }
@@ -112,7 +112,8 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> validateLiveness(@InputParam("livenessData") Map<String, Object> livenessData,
                                                 @InputParam("forceFail") Boolean forceFail) {
             boolean passed = mockEkycService.decidePassed(Boolean.TRUE.equals(forceFail));
-            return Map.of("passed", passed, "livenessData", passed ? livenessData : Map.of());
+            Map<String, Object> data = (passed && livenessData != null) ? livenessData : Map.of();
+            return Map.of("passed", passed, "livenessData", data);
       }
 
       @WorkerTask("show_nfc_guide")
@@ -127,7 +128,8 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> validateNfc(@InputParam("nfcData") Map<String, Object> nfcData,
                                           @InputParam("forceFail") Boolean forceFail) {
             boolean passed = mockEkycService.decidePassed(Boolean.TRUE.equals(forceFail));
-            return Map.of("passed", passed, "nfcData", passed ? nfcData : Map.of());
+            Map<String, Object> data = (passed && nfcData != null) ? nfcData : Map.of();
+            return Map.of("passed", passed, "nfcData", data);
       }
 
       // ---------------- Phase 6 ----------------
@@ -237,11 +239,11 @@ public class OnboardingConductorWorkers {
       }
 
       @WorkerTask("audit_log_final_result")
-      public Map<String, Object> auditLogFinalResult(@InputParam("workflowId") String workflowId,
-                                                      @InputParam("finalStatus") String finalStatus,
-                                                      @InputParam("ebankUserId") String ebankUserId,
-                                                      @InputParam("accountNumber") String accountNumber,
-                                                      @InputParam("failureReason") String failureReason) {
+      public Map<String, Object> auditLogFinalResult(
+            @InputParam("workflowId") String workflowId, @InputParam("finalStatus") String finalStatus,
+            @InputParam("ebankUserId") String ebankUserId, @InputParam("accountNumber") String accountNumber,
+            @InputParam("failureReason") String failureReason) 
+      {
             sessionRepository.findByWorkflowId(workflowId).ifPresent(session -> {
                   session.setLastKnownStatus(finalStatus);
                   sessionRepository.save(session);

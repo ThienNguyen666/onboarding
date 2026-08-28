@@ -9,9 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Bọc method @WorkerTask trên 1 bean Spring (đã inject đầy đủ dependency)
@@ -26,6 +28,11 @@ import java.util.Map;
 @Slf4j
 public class SpringWorkerAdapter implements Worker {
 
+    private static final Set<String> ASYNC_COMPLETE_TASKS = Set.of(
+            "perform_ocr_cccd", "perform_liveness", "perform_nfc",
+            "verify_otp", "show_identity_confirmation", "show_tnc_screen"
+    );
+    
     private final Object bean;
     private final Method method;
     private final String taskDefName;
@@ -58,9 +65,13 @@ public class SpringWorkerAdapter implements Worker {
         TaskResult result = new TaskResult(task);
         try {
             Object output = method.invoke(bean, resolveArgs(task));
-            result.setStatus(TaskResult.Status.COMPLETED);
+            result.setStatus(ASYNC_COMPLETE_TASKS.contains(taskDefName)
+                    ? TaskResult.Status.IN_PROGRESS
+                    : TaskResult.Status.COMPLETED);
             if (output instanceof Map<?, ?> map) {
-                map.forEach((k, v) -> result.getOutputData().put(String.valueOf(k), v));
+                map.forEach((k, v) -> {
+                    if (v != null) result.getOutputData().put(String.valueOf(k), v);
+                });
             }
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -70,7 +81,6 @@ public class SpringWorkerAdapter implements Worker {
         }
         return result;
     }
-
     private Object[] resolveArgs(Task task) {
         Parameter[] params = method.getParameters();
         Object[] args = new Object[params.length];
