@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Bọc method @WorkerTask trên 1 bean Spring (đã inject đầy đủ dependency)
@@ -37,7 +36,7 @@ public class SpringWorkerAdapter implements Worker {
     private final Object bean;
     private final Method method;
     private final String taskDefName;
-    private static final long ASYNC_COMPLETE_CALLBACK_SECONDS = 280;
+    private static final long ASYNC_COMPLETE_CALLBACK_SECONDS = 1700;
     
     private SpringWorkerAdapter(Object bean, Method method) {
         this.bean = bean;
