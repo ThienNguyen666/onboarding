@@ -31,10 +31,10 @@ public class ConductorTaskSignalService {
 
     public Map<String, Object> completeTask(String workflowId, String taskRefName, TaskSignalRequest req) {
         Workflow workflow = workflowClient.getWorkflow(workflowId, true);
-        Task task = findInProgressTask(workflow, taskRefName);
+        Task task = findInProgressTaskWithRetry(workflowId, taskRefName);
 
         TaskResult result = new TaskResult();
-        result.setWorkflowInstanceId(workflow.getWorkflowId());
+        result.setWorkflowInstanceId(workflowId);
         result.setTaskId(task.getTaskId());
         result.setStatus(TaskResult.Status.COMPLETED); // pass/fail thật do task validate_*/SWITCH phía sau quyết định
 
@@ -80,14 +80,31 @@ public class ConductorTaskSignalService {
         return Map.of("verified", verified);
     }
 
+    private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
+        Workflow workflow = null;
+        for (int attempt = 0; attempt < 6; attempt++) {
+            workflow = workflowClient.getWorkflow(workflowId, true);
+            Task task = findInProgressTask(workflow, taskRefName);
+            if (task != null) {
+                return task;
+            }
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        throw OnboardingException.badState(
+                "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflowId);
+    }
+
     private Task findInProgressTask(Workflow workflow, String taskRefName) {
         return workflow.getTasks().stream()
                 .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName) && t.getStatus() == Task.Status.IN_PROGRESS)
                 .reduce((first, second) -> second)
-                .orElseThrow(() -> OnboardingException.badState(
-                        "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflow.getWorkflowId()));
+                .orElse(null);
     }
-
     // Cùng gốc bug với WorkflowStatusMapper: task trong DO_WHILE có referenceTaskName runtime
     // dạng "<ref>__<iteration>". So khớp cả 2 dạng (có/không hậu tố).
     private boolean matchesRef(String actualRef, String expectedRef) {

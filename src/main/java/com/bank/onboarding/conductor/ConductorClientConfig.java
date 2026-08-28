@@ -17,7 +17,10 @@ public class ConductorClientConfig {
       @Bean
       @Lazy
       public ApiClient conductorApiClient(ConductorProperties properties) {
-            var builder = ApiClient.builder().basePath(properties.server().url());
+            var builder = ApiClient.builder().basePath(properties.server().url())
+                        .readTimeout(30)
+                        .connectTimeout(10);
+
             if (StringUtils.hasText(properties.server().authKey()) && StringUtils.hasText(properties.server().authSecret())) {
                   builder.credentials(properties.server().authKey(), properties.server().authSecret());
             } else {

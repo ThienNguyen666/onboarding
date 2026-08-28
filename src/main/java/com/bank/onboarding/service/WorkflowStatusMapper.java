@@ -29,7 +29,7 @@ public class WorkflowStatusMapper {
         public WorkflowStatusResponse toResponse(Workflow workflow) {
         Task pending = findLatest(workflow.getTasks(),
                 t -> HUMAN_TASK_REFS.contains(baseRef(t.getReferenceTaskName()))
-                        && t.getStatus() == Task.Status.IN_PROGRESS);
+                        && (t.getStatus() == Task.Status.IN_PROGRESS || t.getStatus() == Task.Status.SCHEDULED));
         Task current = pending != null ? pending : findLatest(workflow.getTasks(),
                 t -> t.getStatus() == Task.Status.IN_PROGRESS || t.getStatus() == Task.Status.SCHEDULED);
 
