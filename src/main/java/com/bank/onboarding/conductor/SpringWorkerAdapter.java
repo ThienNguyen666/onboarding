@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Bọc method @WorkerTask trên 1 bean Spring (đã inject đầy đủ dependency)
@@ -36,7 +37,8 @@ public class SpringWorkerAdapter implements Worker {
     private final Object bean;
     private final Method method;
     private final String taskDefName;
-
+    private static final long ASYNC_COMPLETE_CALLBACK_SECONDS = 280;
+    
     private SpringWorkerAdapter(Object bean, Method method) {
         this.bean = bean;
         this.method = method;
@@ -65,9 +67,15 @@ public class SpringWorkerAdapter implements Worker {
         TaskResult result = new TaskResult(task);
         try {
             Object output = method.invoke(bean, resolveArgs(task));
-            result.setStatus(ASYNC_COMPLETE_TASKS.contains(taskDefName)
-                    ? TaskResult.Status.IN_PROGRESS
-                    : TaskResult.Status.COMPLETED);
+            boolean isAsyncComplete = ASYNC_COMPLETE_TASKS.contains(taskDefName);
+
+            result.setStatus(isAsyncComplete ? TaskResult.Status.IN_PROGRESS : TaskResult.Status.COMPLETED);
+            if (isAsyncComplete) {
+                // Không set cái này = bug đang gặp: task visible lại ngay -> tự poll
+                // lặp vô hạn, đè output thật của FE.
+                result.setCallbackAfterSeconds(ASYNC_COMPLETE_CALLBACK_SECONDS);
+            }
+
             if (output instanceof Map<?, ?> map) {
                 map.forEach((k, v) -> {
                     if (v != null) result.getOutputData().put(String.valueOf(k), v);
@@ -80,7 +88,7 @@ public class SpringWorkerAdapter implements Worker {
             result.setReasonForIncompletion(cause.getMessage());
         }
         return result;
-    }
+    }   
     private Object[] resolveArgs(Task task) {
         Parameter[] params = method.getParameters();
         Object[] args = new Object[params.length];

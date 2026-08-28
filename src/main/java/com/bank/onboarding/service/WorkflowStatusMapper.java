@@ -38,8 +38,8 @@ public class WorkflowStatusMapper {
         if (loopRef != null) {
                 Task loop = findLatest(workflow.getTasks(), t -> loopRef.equals(t.getReferenceTaskName()));
                 if (loop != null && loop.getOutputData() != null) {
-                Object it = loop.getOutputData().get("iteration");
-                if (it instanceof Number n) iteration = n.intValue();
+                        Object it = loop.getOutputData().get("iteration");
+                        if (it instanceof Number n) iteration = n.intValue();
                 }
                 // FIX: trước đây luôn lấy maxOcrRetries bất kể đang ở loop nào -> retryMax hiện sai
                 // khi maxLivenessRetries/maxNfcRetries khác maxOcrRetries.
@@ -69,8 +69,8 @@ public class WorkflowStatusMapper {
          * đúng với ref gốc khai báo trong workflow JSON, đồng thời trả về ref GỐC cho FE (FE match
          * exact string "loop_perform_ocr_ref", không biết gì về hậu tố iteration). */
         private String baseRef(String actualRef) {
-        int idx = actualRef.indexOf("__");
-        return idx == -1 ? actualRef : actualRef.substring(0, idx);
+                int idx = actualRef.indexOf("__");
+                return idx == -1 ? actualRef : actualRef.substring(0, idx);
         }
         private Task findLatest(List<Task> tasks, java.util.function.Predicate<Task> filter) {
                 if (tasks == null) return null;
