@@ -33,15 +33,19 @@ public class ConductorTaskRunner implements SmartLifecycle {
 
     @Override
     public void start() {
-        List<Worker> workers = SpringWorkerAdapter.wrap(onboardingConductorWorkers);
+        List<Worker> workers = SpringWorkerAdapter.wrap(onboardingConductorWorkers, properties.worker().pollingIntervalMs());
+        
+        int effectiveThreadCount = Math.max(properties.worker().threadCount(), workers.size());
+
         configurer = new TaskRunnerConfigurer.Builder(taskClient, workers)
-                .withThreadCount(properties.worker().threadCount())
+                .withThreadCount(effectiveThreadCount)
                 .build();
         configurer.init();
         running = true;
-        log.info("Conductor worker polling STARTED — {} worker(s) qua TaskRunnerConfigurer, threadCount={}",
-                workers.size(), properties.worker().threadCount());
-        workers.forEach(w -> log.info("  -> worker sẵn sàng cho task '{}'", w.getTaskDefName()));
+        log.info("Conductor worker polling STARTED — {} worker(s), threadCount={} (config={} -> tự nâng lên >= số worker để tránh starvation)",
+                workers.size(), effectiveThreadCount, properties.worker().threadCount());
+        workers.forEach(w -> log.info("  -> worker sẵn sàng cho task '{}' (pollingInterval={}ms)",
+                w.getTaskDefName(), w.getPollingInterval()));
     }
 
     @Override

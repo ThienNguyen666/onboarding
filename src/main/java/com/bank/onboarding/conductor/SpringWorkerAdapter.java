@@ -36,21 +36,23 @@ public class SpringWorkerAdapter implements Worker {
     private final Object bean;
     private final Method method;
     private final String taskDefName;
+    private final int pollingIntervalMs;
     private static final long ASYNC_COMPLETE_CALLBACK_SECONDS = 1700;
     
-    private SpringWorkerAdapter(Object bean, Method method) {
+    private SpringWorkerAdapter(Object bean, Method method, int pollingIntervalMs) {
         this.bean = bean;
         this.method = method;
         this.method.setAccessible(true);
         this.taskDefName = method.getAnnotation(WorkerTask.class).value();
+        this.pollingIntervalMs = pollingIntervalMs;
     }
 
     /** Quét toàn bộ method public có @WorkerTask trên 1 bean -> danh sách Worker. */
-    public static List<Worker> wrap(Object bean) {
+    public static List<Worker> wrap(Object bean, int pollingIntervalMs) {
         List<Worker> workers = new ArrayList<>();
         for (Method m : bean.getClass().getMethods()) {
             if (m.isAnnotationPresent(WorkerTask.class)) {
-                workers.add(new SpringWorkerAdapter(bean, m));
+                workers.add(new SpringWorkerAdapter(bean, m, pollingIntervalMs));
             }
         }
         return workers;
@@ -60,7 +62,11 @@ public class SpringWorkerAdapter implements Worker {
     public String getTaskDefName() {
         return taskDefName;
     }
-
+    
+    @Override
+    public int getPollingInterval() {
+        return pollingIntervalMs;
+    }
     @Override
     public TaskResult execute(Task task) {
         TaskResult result = new TaskResult(task);
