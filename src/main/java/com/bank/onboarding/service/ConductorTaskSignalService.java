@@ -82,14 +82,14 @@ public class ConductorTaskSignalService {
 
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
         Workflow workflow = null;
-        for (int attempt = 0; attempt < 6; attempt++) {
+        for (int attempt = 0; attempt < 15; attempt++) {
             workflow = workflowClient.getWorkflow(workflowId, true);
             Task task = findInProgressTask(workflow, taskRefName);
             if (task != null) {
                 return task;
             }
             try {
-                Thread.sleep(300);
+                Thread.sleep(400);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;

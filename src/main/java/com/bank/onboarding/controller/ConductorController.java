@@ -5,6 +5,8 @@ import com.bank.onboarding.dto.WorkflowStatusResponse;
 import com.bank.onboarding.service.ConductorTaskSignalService;
 import com.bank.onboarding.service.ConductorWorkflowService;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -27,6 +29,12 @@ public class ConductorController {
             return workflowService.status(workflowId);
       }
 
+      @PostMapping("/{workflowId}/dropoff")
+      public ResponseEntity<Void> dropoff(@PathVariable String workflowId) {
+            workflowService.dropoff(workflowId);
+            return ResponseEntity.noContent().build();
+      }
+      
       @PostMapping("/{workflowId}/tasks/{taskRef}/complete")
       public Map<String, Object> completeTask(@PathVariable String workflowId,
                                           @PathVariable String taskRef,

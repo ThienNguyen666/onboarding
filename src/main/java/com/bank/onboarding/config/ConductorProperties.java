@@ -22,6 +22,6 @@ public record ConductorProperties(Server server, Worker worker, Workflow workflo
 
       public record Workflow(
             @NotBlank String name,
-            @Min(1) @DefaultValue("2") int version
+            @Min(1) @DefaultValue("4") int version
       ) {}
 }

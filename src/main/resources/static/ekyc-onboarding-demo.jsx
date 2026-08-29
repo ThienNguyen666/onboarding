@@ -272,6 +272,11 @@ export default function App() {
       setOtpValue(res.otp);
     });
 
+  const doDropoff = () =>
+    run(async () => {
+      await api(baseUrl, `/api/conductor/${wfId}/dropoff`, "POST");
+    });
+
   const doListRecent = () =>
     run(async () => setRecent(await api(baseUrl, `/api/onboarding/debug/sessions`)));
 
@@ -499,6 +504,11 @@ export default function App() {
                 <button className="dev-btn" onClick={doPeekOtp} disabled={!wfId || loading}>
                   <Eye size={14} /> Xem OTP hiện tại (debug endpoint)
                 </button>
+
+                <button className="dev-btn" onClick={doDropoff} disabled={!wfId || loading}>
+                  <LogOut size={14} /> Giả lập thoát app (dropoff)
+                </button>
+                
                 {otpDebug && (
                   <div className="otp-peek mono">
                     {otpDebug.otp} <span className="hint">còn {otpDebug.ttlSecondsRemaining}s</span>
