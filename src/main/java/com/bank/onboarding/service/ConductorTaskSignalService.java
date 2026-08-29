@@ -65,7 +65,7 @@ public class ConductorTaskSignalService {
 
     private Map<String, Object> verifyOtp(Workflow workflow, TaskSignalRequest req) {
         String phone = String.valueOf(workflow.getInput().get("phone"));
-        String otpKey = "conductor:" + phone;
+        String otpKey = OtpService.workflowSessionKey(phone);
         Object otpValue = req.outputData() == null ? null : req.outputData().get("otp");
         boolean verified;
         try {
@@ -81,8 +81,8 @@ public class ConductorTaskSignalService {
     }
 
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
-        int maxAttempts = 20;
-        long delayMs = 500;
+        int maxAttempts = 6;
+        long delayMs = 300;
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
             try {
                 Workflow workflow = workflowClient.getWorkflow(workflowId, true);
@@ -94,8 +94,8 @@ public class ConductorTaskSignalService {
                 log.warn("getWorkflow lỗi tạm thời (attempt {}/{}): {}", attempt + 1, maxAttempts, e.getMessage());
             }
             try {
-                Thread.sleep(Math.min(delayMs, 3000));
-                delayMs = (long) (delayMs * 1.5); // backoff tăng dần
+                Thread.sleep(Math.min(delayMs, 1500));
+                delayMs = (long) (delayMs * 1.5);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -103,8 +103,9 @@ public class ConductorTaskSignalService {
         }
         throw OnboardingException.badState(
                 "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflowId
-                        + " (có thể do lỗi kết nối tới Orkes Cloud — kiểm tra log connectTimeout/readTimeout)");
-    }
+                        + " (khả năng: worker BE chưa poll kịp, hoặc mất kết nối tới Orkes Cloud)");
+    }   
+    
     private Task findInProgressTask(Workflow workflow, String taskRefName) {
         return workflow.getTasks().stream()
                 .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName) && t.getStatus() == Task.Status.IN_PROGRESS)

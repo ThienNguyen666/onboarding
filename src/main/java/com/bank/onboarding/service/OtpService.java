@@ -24,7 +24,9 @@ public class OtpService {
     private String codeKey(String sessionId) { return "onboarding:otp:code:" + sessionId; }
     private String attemptsKey(String sessionId) { return "onboarding:otp:attempts:" + sessionId; }
     private String verifiedKey(String sessionId) { return "onboarding:otp:verified:" + sessionId; }
-
+    public static String workflowSessionKey(String phone) {
+        return "conductor:" + phone;
+    }
     public String generateAndStore(String sessionId) {
         int length = properties.otp().length();
         StringBuilder sb = new StringBuilder(length);

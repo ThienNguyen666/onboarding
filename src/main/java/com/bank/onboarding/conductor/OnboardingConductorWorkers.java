@@ -150,7 +150,7 @@ public class OnboardingConductorWorkers {
       }
       @WorkerTask("send_otp")
       public Map<String, Object> sendOtp(@InputParam("phone") String phone) {
-            String workflowSessionKey = "conductor:" + phone;
+            String workflowSessionKey = OtpService.workflowSessionKey(phone);
             String otpToken = otpService.generateAndStore(workflowSessionKey);
             log.info("OTP sent for phone (masked in service layer)");
             return Map.of("otpToken", otpToken);

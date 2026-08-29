@@ -51,7 +51,7 @@ public class DebugController {
                 throw new OnboardingException(HttpStatus.FORBIDDEN, "DEBUG_DISABLED",
                         "Debug OTP endpoint đang tắt");
         }
-        String key = "conductor:" + phone;
+        String key = OtpService.workflowSessionKey(phone);
         String otp = otpService.debugPeek(key);
         if (otp == null) {
                 throw OnboardingException.notFound("Chưa có OTP nào gửi cho SĐT này (hoặc đã hết hạn)");
