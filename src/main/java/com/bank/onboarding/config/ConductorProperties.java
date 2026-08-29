@@ -11,12 +11,14 @@ public record ConductorProperties(Server server, Worker worker, Workflow workflo
       public record Server(
             @NotBlank String url,
             String authKey,
-            String authSecret
+            String authSecret,
+            @Min(5) @DefaultValue("60") int connectTimeoutSeconds,
+            @Min(10) @DefaultValue("60") int readTimeoutSeconds
       ) {}
 
       public record Worker(
-            @Min(1) @DefaultValue("40") int threadCount,
-            @Min(50) @DefaultValue("300") int pollingIntervalMs,
+            @Min(1) @DefaultValue("10") int threadCount,
+            @Min(50) @DefaultValue("1000") int pollingIntervalMs,
             @DefaultValue("false") boolean autoStart
       ) {}
 

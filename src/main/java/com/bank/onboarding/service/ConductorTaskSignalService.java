@@ -81,24 +81,30 @@ public class ConductorTaskSignalService {
     }
 
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
-        Workflow workflow = null;
-        for (int attempt = 0; attempt < 15; attempt++) {
-            workflow = workflowClient.getWorkflow(workflowId, true);
-            Task task = findInProgressTask(workflow, taskRefName);
-            if (task != null) {
-                return task;
+        int maxAttempts = 20;
+        long delayMs = 500;
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                Workflow workflow = workflowClient.getWorkflow(workflowId, true);
+                Task task = findInProgressTask(workflow, taskRefName);
+                if (task != null) {
+                    return task;
+                }
+            } catch (Exception e) {
+                log.warn("getWorkflow lỗi tạm thời (attempt {}/{}): {}", attempt + 1, maxAttempts, e.getMessage());
             }
             try {
-                Thread.sleep(400);
+                Thread.sleep(Math.min(delayMs, 3000));
+                delayMs = (long) (delayMs * 1.5); // backoff tăng dần
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
         throw OnboardingException.badState(
-                "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflowId);
+                "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflowId
+                        + " (có thể do lỗi kết nối tới Orkes Cloud — kiểm tra log connectTimeout/readTimeout)");
     }
-
     private Task findInProgressTask(Workflow workflow, String taskRefName) {
         return workflow.getTasks().stream()
                 .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName) && t.getStatus() == Task.Status.IN_PROGRESS)

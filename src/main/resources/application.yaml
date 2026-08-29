@@ -46,8 +46,8 @@ conductor:
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:
     auto-start: ${CONDUCTOR_WORKER_AUTO_START:true}
-    thread-count: ${CONDUCTOR_WORKER_THREAD_COUNT:40}
-    polling-interval-ms: ${CONDUCTOR_WORKER_POLLING_INTERVAL_MS:300}
+    thread-count: ${CONDUCTOR_WORKER_THREAD_COUNT:10}
+    polling-interval-ms: ${CONDUCTOR_WORKER_POLLING_INTERVAL_MS:1000}
   workflow:
     name: vendor_sdk_ekyc_account_opening
     version: 4
