@@ -81,8 +81,10 @@ public class ConductorTaskSignalService {
     }
 
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
-        int maxAttempts = 6;
-        long delayMs = 300;
+        // Budget đủ lớn: chịu được worker pollingIntervalMs (mặc định 1000ms) + độ trễ Orkes Cloud
+        // + trường hợp hàng đợi task cùng loại (perform_ocr_cccd/liveness/nfc/...) đang tồn đọng.
+        int maxAttempts = 12;
+        long delayMs = 400;
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
             try {
                 Workflow workflow = workflowClient.getWorkflow(workflowId, true);
@@ -94,8 +96,8 @@ public class ConductorTaskSignalService {
                 log.warn("getWorkflow lỗi tạm thời (attempt {}/{}): {}", attempt + 1, maxAttempts, e.getMessage());
             }
             try {
-                Thread.sleep(Math.min(delayMs, 1500));
-                delayMs = (long) (delayMs * 1.5);
+                Thread.sleep(Math.min(delayMs, 2000));
+                delayMs = (long) (delayMs * 1.6);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -105,7 +107,6 @@ public class ConductorTaskSignalService {
                 "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflowId
                         + " (khả năng: worker BE chưa poll kịp, hoặc mất kết nối tới Orkes Cloud)");
     }   
-    
     private Task findInProgressTask(Workflow workflow, String taskRefName) {
         return workflow.getTasks().stream()
                 .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName) && t.getStatus() == Task.Status.IN_PROGRESS)

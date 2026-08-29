@@ -648,7 +648,7 @@ function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLab
       </div>
       {forceFail && <p className="hint hint-warn">⚠ QA Console đang ép FAIL bước này.</p>}
       {typeof retryIteration === "number" && (
-        <p className="hint">Lần thử {retryIteration + 1}{retryMax ? ` / ${retryMax}` : ""}</p>
+        <p className="hint">Lần thử {retryIteration}{retryMax ? ` / ${retryMax}` : ""}</p>
       )}
       <PrimaryButton onClick={onSubmit} loading={loading}>{actionLabel}</PrimaryButton>
     </StepShell>
