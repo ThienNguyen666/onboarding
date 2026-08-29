@@ -17,9 +17,7 @@ public class ConductorClientConfig {
       @Bean
       @Lazy
       public ApiClient conductorApiClient(ConductorProperties properties) {
-            var builder = ApiClient.builder().basePath(properties.server().url())
-                        .readTimeout(properties.server().readTimeoutSeconds())
-                        .connectTimeout(properties.server().connectTimeoutSeconds());
+            var builder = ApiClient.builder().basePath(properties.server().url());
 
             if (StringUtils.hasText(properties.server().authKey()) && StringUtils.hasText(properties.server().authSecret())) {
                   builder.credentials(properties.server().authKey(), properties.server().authSecret());

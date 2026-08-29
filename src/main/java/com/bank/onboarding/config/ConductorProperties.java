@@ -13,7 +13,7 @@ public record ConductorProperties(Server server, Worker worker, Workflow workflo
             String authKey,
             String authSecret,
             @Min(2) @DefaultValue("8") int connectTimeoutSeconds,
-            @Min(50) @DefaultValue("20") int readTimeoutSeconds
+            @Min(5) @DefaultValue("20") int readTimeoutSeconds
       ) {}
 
       public record Worker(

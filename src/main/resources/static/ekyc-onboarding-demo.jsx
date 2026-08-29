@@ -3,7 +3,7 @@ import {
   Settings2, X, RefreshCw, Trash2, ChevronRight,
   ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check, TriangleAlert,
+  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
 
