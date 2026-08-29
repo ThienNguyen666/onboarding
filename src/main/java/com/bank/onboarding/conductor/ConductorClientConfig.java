@@ -18,6 +18,7 @@ public class ConductorClientConfig {
       @Lazy
       public ApiClient conductorApiClient(ConductorProperties properties) {
             var builder = ApiClient.builder().basePath(properties.server().url());
+
             if (StringUtils.hasText(properties.server().authKey()) && StringUtils.hasText(properties.server().authSecret())) {
                   builder.credentials(properties.server().authKey(), properties.server().authSecret());
             } else {
@@ -38,5 +39,11 @@ public class ConductorClientConfig {
       @Lazy
       public WorkflowClient workflowClient(ApiClient apiClient) {
             return new WorkflowClient(apiClient);
+      }
+      
+      @Bean
+      @Lazy
+      public com.netflix.conductor.client.http.MetadataClient metadataClient(ApiClient apiClient) {
+            return new com.netflix.conductor.client.http.MetadataClient(apiClient);
       }
 }

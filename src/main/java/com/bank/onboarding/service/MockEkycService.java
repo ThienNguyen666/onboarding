@@ -31,7 +31,7 @@ public class MockEkycService {
         data.put("fullName", "NGUYEN VAN A");
         data.put("dob", LocalDate.now().minusYears(25).toString());
         data.put("gender", "MALE");
-        data.put("address", "123 Nguyen Trai, Q1, TP.HCM");
+        data.put("address", "Hai Ba Trung, Phuong Sai Gon, TP.HCM");
         data.put("issueDate", LocalDate.now().minusYears(3).toString());
         data.put("expiryDate", LocalDate.now().plusYears(12).toString());
         if (overrides != null) data.putAll(overrides);

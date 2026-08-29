@@ -24,7 +24,9 @@ public class OtpService {
     private String codeKey(String sessionId) { return "onboarding:otp:code:" + sessionId; }
     private String attemptsKey(String sessionId) { return "onboarding:otp:attempts:" + sessionId; }
     private String verifiedKey(String sessionId) { return "onboarding:otp:verified:" + sessionId; }
-
+    public static String workflowSessionKey(String phone) {
+        return "conductor:" + phone;
+    }
     public String generateAndStore(String sessionId) {
         int length = properties.otp().length();
         StringBuilder sb = new StringBuilder(length);
@@ -40,11 +42,6 @@ public class OtpService {
         return otp; // KHÔNG log giá trị OTP thật ra log, chỉ gửi qua kênh SMS/OTT mock.
     }
 
-    /**
-     * FIX: task_definitions.json ghi "idempotent theo (phone, otpToken), an toàn retry" (retryCount=2)
-     * nhưng bản gốc xoá code ngay khi match -> lần retry sau (do mất response) sẽ báo sai.
-     * Nay lưu thêm cờ verifiedKey để các lần gọi lại với cùng session trả kết quả nhất quán.
-     */
     public boolean verify(String sessionId, String candidate) {
         if (Boolean.TRUE.equals(redisTemplate.hasKey(verifiedKey(sessionId)))) {
             log.info("OTP verify session={} — idempotent retry, already verified", sessionId);

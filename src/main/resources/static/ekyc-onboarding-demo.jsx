@@ -1,14 +1,14 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   Settings2, X, RefreshCw, Trash2, ChevronRight,
   ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check,
+  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
 
 /* ------------------------------------------------------------------ */
-/*  API layer — gọi thẳng OnboardingController / DebugController thật */
+/*  API layer — gọi thẳng ConductorController / DebugController thật   */
 /* ------------------------------------------------------------------ */
 
 async function api(baseUrl, path, method = "GET", body) {
@@ -21,7 +21,7 @@ async function api(baseUrl, path, method = "GET", body) {
     });
   } catch (e) {
     throw new Error(
-      `Không kết nối được tới ${baseUrl}. Kiểm tra: backend đã "./mvnw spring-boot:run" chưa? CORS đã bật (CorsConfig) chưa?`
+      `Không kết nối được tới ${baseUrl}. Kiểm tra: backend đã chạy chưa? CORS đã bật chưa?`
     );
   }
   const text = await res.text();
@@ -36,7 +36,7 @@ async function api(baseUrl, path, method = "GET", body) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Phase map — song song với SessionPhase enum + swimlane             */
+/*  Phase map — tô progress rail                                       */
 /* ------------------------------------------------------------------ */
 
 const FLOW = [
@@ -52,6 +52,21 @@ const FLOW = [
   { key: "ACCOUNT_CREATION", label: "Mở tài khoản", lane: "sys" },
   { key: "DONE", label: "Hoàn tất", lane: "sys" },
 ];
+
+// 6 human-task ref phải khớp CHÍNH XÁC với WorkflowStatusMapper.HUMAN_TASK_REFS (BE)
+// và với asyncComplete=true trong workflow JSON (vendor_sdk_ekyc_account_opening).
+const HUMAN_TASK_REFS = new Set([
+  "loop_perform_ocr_ref",
+  "loop_perform_liveness_ref",
+  "loop_perform_nfc_ref",
+  "show_identity_confirmation_ref",
+  "show_tnc_screen_ref",
+  "verify_otp_ref",
+]);
+
+// Nếu 1 task KHÔNG phải human-task mà đứng RUNNING quá lâu -> nhiều khả năng
+// worker BE không poll được (regression của lỗi classpath-scan trong fat jar).
+const WORKER_STALL_WARNING_MS = 12000;
 
 function phaseIndex(key) {
   const i = FLOW.findIndex((p) => p.key === key);
@@ -87,8 +102,15 @@ function PrimaryButton({ children, onClick, disabled, loading, tone = "primary" 
   );
 }
 
-function Banner({ tone = "info", children }) {
-  return <div className={`banner banner-${tone}`}>{children}</div>;
+function Banner({ tone = "info", children, onClose }) {
+  return (
+    <div className={`banner banner-${tone}`}>
+      <span>{children}</span>
+      {onClose && (
+        <button className="banner-close" onClick={onClose}><X size={13} /></button>
+      )}
+    </div>
+  );
 }
 
 function StepShell({ icon, eyebrow, title, subtitle, children }) {
@@ -111,12 +133,10 @@ export default function App() {
   const [baseUrl, setBaseUrl] = useState(
     typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"
   );
-  const [sessionId, setSessionId] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [extra, setExtra] = useState({});
+  const [wfId, setWfId] = useState(null);
+  const [wf, setWf] = useState(null);           // WorkflowStatusResponse
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
   const [devOpen, setDevOpen] = useState(false);
   const [devTab, setDevTab] = useState("controls");
 
@@ -125,6 +145,12 @@ export default function App() {
   const [recent, setRecent] = useState([]);
   const [otpDebug, setOtpDebug] = useState(null);
   const [otpValue, setOtpValue] = useState("");
+  const [tncChecked, setTncChecked] = useState(false);
+
+  // Theo dõi task hiện tại đứng bao lâu -> phát hiện worker BE không poll được
+  const [taskStalled, setTaskStalled] = useState(false);
+  const taskSinceRef = useRef(null);
+  const lastRefRef = useRef(null);
 
   const [form, setForm] = useState({
     vendorId: "VENDOR_BANK_APP",
@@ -134,172 +160,70 @@ export default function App() {
     osVersion: "Android 15",
     nfcSupported: true,
     phone: "0909" + String(Math.floor(100000 + Math.random() * 900000)),
-    tncChecked: false,
   });
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const refreshStatus = useCallback(
-    async (id) => {
-      if (!id) return;
-      try {
-        const s = await api(baseUrl, `/api/onboarding/sessions/${id}`);
-        setStatus(s);
-      } catch (e) {
-        /* transient — surfaced already by the action that triggered it */
-      }
-    },
-    [baseUrl]
-  );
+  /* map task ref hiện tại -> "phase" để tô progress rail (không cần chính xác tuyệt đối) */
+  function phaseFromRef(ref, wfStatus) {
+    if (wfStatus && wfStatus !== "RUNNING" && wfStatus !== "PAUSED") return "DONE";
+    if (!ref) return "INIT";
+    if (ref.includes("access_token") || ref.includes("cvp")) return "INIT";
+    if (ref.includes("device")) return "DEVICE_CHECK";
+    if (ref.includes("phone") || ref.includes("customer_by_phone") || ref.includes("dropoff") || ref.includes("etb_ntb")) return "CUSTOMER_LOOKUP";
+    if (ref.includes("ocr")) return "OCR";
+    if (ref.includes("liveness")) return "LIVENESS";
+    if (ref.includes("nfc")) return "NFC";
+    if (ref.includes("identity") || ref.includes("customer_type")) return "IDENTITY_CONFIRM";
+    if (ref.includes("tnc")) return "TNC";
+    if (ref.includes("otp")) return "OTP";
+    return "ACCOUNT_CREATION";
+  }
 
   const run = async (fn) => {
     setError(null);
     setLoading(true);
+    try { await fn(); } catch (e) { setError(e.message || "Có lỗi xảy ra"); }
+    finally { setLoading(false); }
+  };
+
+  const pollStatus = useCallback(async () => {
+    if (!wfId) return;
     try {
-      await fn();
-    } catch (e) {
-      setError(e.message || "Có lỗi xảy ra");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetLocal = () => {
-    setSessionId(null);
-    setStatus(null);
-    setExtra({});
-    setError(null);
-    setNotice(null);
-    setOtpValue("");
-    setOtpDebug(null);
-    setForm((f) => ({ ...f, sdkSessionId: randomId("SDK"), phone: "0909" + String(Math.floor(100000 + Math.random() * 900000)), tncChecked: false }));
-  };
-
-  /* ---- Phase 0 ---- */
-  const doInit = () =>
-    run(async () => {
-      const res = await api(baseUrl, "/api/onboarding/sessions", "POST", {
-        vendorId: form.vendorId,
-        sdkSessionId: form.sdkSessionId,
-        productType: form.productType,
-      });
-      setSessionId(res.sessionId);
-      await refreshStatus(res.sessionId);
-    });
-
-  /* ---- Phase 1 ---- */
-  const doDeviceCheck = () =>
-    run(async () => {
-      await api(baseUrl, `/api/onboarding/sessions/${sessionId}/device-check`, "POST", {
-        model: form.deviceModel,
-        osVersion: form.osVersion,
-        nfcSupported: form.nfcSupported,
-      });
-      await refreshStatus(sessionId);
-    });
-
-  /* ---- Phase 2 ---- */
-  const doLookup = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/sessions/${sessionId}/customer-lookup`, "POST", {
-        phone: form.phone,
-      });
-      setExtra((x) => ({ ...x, lookup: res }));
-      if (res.dropoff) setNotice(`Đã khôi phục tiến trình cũ — tiếp tục từ bước "${labelOf(res.resumeStep)}"`);
-      await refreshStatus(sessionId);
-    });
-
-  /* ---- Phase 3/4/5 ---- */
-  const doEkyc = (step) =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/sessions/${sessionId}/${step}`, "POST", {
-        forceFail: !!forceFail[step],
-        mockPayload: null,
-      });
-      setExtra((x) => ({ ...x, [step]: res }));
-      await refreshStatus(sessionId);
-    });
-
-  /* ---- Phase 6a/b/c ---- */
-  const doIdentityConfirm = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/sessions/${sessionId}/identity-confirm`, "POST");
-      setExtra((x) => ({ ...x, identity: res }));
-      await refreshStatus(sessionId);
-    });
-
-  const doTnc = () =>
-    run(async () => {
-      await api(baseUrl, `/api/onboarding/sessions/${sessionId}/tnc`, "POST", { tncVersion: "NHD13-v1.0" });
-      await refreshStatus(sessionId);
-    });
-
-  const doSendOtp = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/sessions/${sessionId}/otp/send`, "POST");
-      setExtra((x) => ({ ...x, otpSend: res }));
-      setOtpDebug(null);
-      setOtpValue("");
-      await refreshStatus(sessionId);
-    });
-
-  const doVerifyOtp = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/sessions/${sessionId}/otp/verify`, "POST", { otp: otpValue });
-      setExtra((x) => ({ ...x, otpVerify: res }));
-      await refreshStatus(sessionId);
-      if (!res.verified) setError(`Sai OTP — còn ${res.attemptsLeft} lần thử`);
-    });
-
-  /* ---- Phase 7 ---- */
-  const doCreateAccount = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/sessions/${sessionId}/account`, "POST", {
-        forceComplianceResult: forceCompliance || null,
-      });
-      setExtra((x) => ({ ...x, account: res }));
-      await refreshStatus(sessionId);
-    });
-
-  /* ---- Dev / QA console ---- */
-  const doPeekOtp = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/debug/sessions/${sessionId}/otp`);
-      setOtpDebug(res);
-      setOtpValue(res.otp);
-    });
-
-  const doMarkDropoff = () =>
-    run(async () => {
-      await api(baseUrl, `/api/onboarding/sessions/${sessionId}/dropoff`, "POST");
-      setNotice("Đã đánh dấu dropoff — thoát app. Bấm 'Mở tài khoản ngay' lại với CÙNG số điện thoại để test resume.");
-      setSessionId(null);
-      setStatus(null);
-      setExtra({});
-    });
-
-  const doListRecent = () =>
-    run(async () => {
-      const res = await api(baseUrl, `/api/onboarding/debug/sessions`);
-      setRecent(res);
-    });
-
-  const doResetAll = () =>
-    run(async () => {
-      await api(baseUrl, `/api/onboarding/debug/reset`, "POST");
-      setRecent([]);
-      resetLocal();
-      setNotice("Đã xoá toàn bộ session / audit log / OTP demo.");
-    });
+      const res = await api(baseUrl, `/api/conductor/${wfId}`);
+      setWf(res);
+    } catch (e) { /* transient, giữ nguyên state cũ */ }
+  }, [baseUrl, wfId]);
 
   useEffect(() => {
-    if (devOpen && devTab === "sessions") doListRecent();
-  }, [devOpen, devTab]);
+    if (!wfId) return;
+    pollStatus();
+    const t = setInterval(pollStatus, 2000);
+    return () => clearInterval(t);
+  }, [wfId, pollStatus]);
 
-  const [conductorWorkflowId, setConductorWorkflowId] = useState(null);
-  const [conductorResult, setConductorResult] = useState(null);
+  // Phát hiện task đứng lâu bất thường: chỉ áp dụng cho task KHÔNG cần thao
+  // tác KH (awaitingCustomerInput=false) — vì đó là lúc BE worker phải tự
+  // xử lý xong trong vài trăm ms, không phải chờ người dùng.
+  useEffect(() => {
+    const ref = wf?.currentTaskRef || null;
+    if (ref !== lastRefRef.current) {
+      lastRefRef.current = ref;
+      taskSinceRef.current = Date.now();
+      setTaskStalled(false);
+    }
+    if (!wfId || !wf || wf.status !== "RUNNING" || wf.awaitingCustomerInput || !ref) {
+      setTaskStalled(false);
+      return;
+    }
+    const check = setInterval(() => {
+      const elapsed = Date.now() - (taskSinceRef.current || Date.now());
+      setTaskStalled(elapsed > WORKER_STALL_WARNING_MS);
+    }, 1000);
+    return () => clearInterval(check);
+  }, [wfId, wf]);
 
-  const doConductorStart = () =>
+  const doStart = () =>
     run(async () => {
       const res = await api(baseUrl, "/api/conductor/start", "POST", {
         vendorClientId: "demo-client-id",
@@ -308,25 +232,64 @@ export default function App() {
         productType: form.productType,
         deviceInfo: { model: form.deviceModel, osVersion: form.osVersion, nfcSupported: form.nfcSupported },
         phone: form.phone,
-        otp: "",
         vendorId: form.vendorId,
         maxOcrRetries: 3,
         maxLivenessRetries: 3,
         maxNfcRetries: 3,
+        forceComplianceResult: forceCompliance || null,
       });
-      setConductorWorkflowId(res.workflowId);
-      setConductorResult(null);
+      setWfId(res.workflowId);
+      setWf(null);
+      setOtpValue("");
+      setOtpDebug(null);
+      setTncChecked(false);
+      taskSinceRef.current = Date.now();
+      lastRefRef.current = null;
+      setTaskStalled(false);
     });
 
-  const doConductorStatus = () =>
+  function taskRefToForceFailKey(ref) {
+    if (ref === "loop_perform_ocr_ref") return "ocr";
+    if (ref === "loop_perform_liveness_ref") return "liveness";
+    if (ref === "loop_perform_nfc_ref") return "nfc";
+    return null;
+  }
+
+  const doCompleteTask = (taskRef) =>
     run(async () => {
-      const res = await api(baseUrl, `/api/conductor/${conductorWorkflowId}`);
-      setConductorResult(res);
+      const body =
+        taskRef === "verify_otp_ref"
+          ? { forceFail: false, outputData: { otp: otpValue } }
+          : { forceFail: !!forceFail[taskRefToForceFailKey(taskRef)], outputData: null };
+      await api(baseUrl, `/api/conductor/${wfId}/tasks/${taskRef}/complete`, "POST", body);
+      await pollStatus();
     });
 
-  const currentPhase = status ? status.phase : "INIT";
-  const isTerminated = status && status.status !== "IN_PROGRESS";
-  const isEtbRedirect = isTerminated && status.terminationReason && status.terminationReason.startsWith("ETB_REDIRECT");
+  const doPeekOtp = () =>
+    run(async () => {
+      const res = await api(baseUrl, `/api/onboarding/debug/otp?phone=${encodeURIComponent(form.phone)}`);
+      setOtpDebug(res);
+      setOtpValue(res.otp);
+    });
+
+  const doDropoff = () =>
+    run(async () => {
+      await api(baseUrl, `/api/conductor/${wfId}/dropoff`, "POST");
+    });
+
+  const doListRecent = () =>
+    run(async () => setRecent(await api(baseUrl, `/api/onboarding/debug/sessions`)));
+
+  const doResetAll = () =>
+    run(async () => {
+      await api(baseUrl, `/api/onboarding/debug/reset`, "POST");
+      setRecent([]); setWfId(null); setWf(null); setError(null);
+    });
+
+  useEffect(() => { if (devOpen && devTab === "sessions") doListRecent(); }, [devOpen, devTab]);
+
+  const currentPhase = phaseFromRef(wf?.currentTaskRef, wf?.status);
+  const terminated = currentPhase === "DONE";
 
   return (
     <div className="stage">
@@ -352,203 +315,138 @@ export default function App() {
             <div className="phone-notch" />
             <div className="phone-screen">
               <FakeStatusBar />
-              <AppHeader phone={form.phone} sessionId={sessionId} />
-              <ProgressRail currentKey={currentPhase} terminated={isTerminated} />
+              <AppHeader phone={form.phone} wfId={wfId} />
+              <ProgressRail currentKey={currentPhase} terminated={terminated} />
 
               <div className="screen-content">
-                {notice && (
-                  <Banner tone="info">
-                    {notice}
-                    <button className="banner-close" onClick={() => setNotice(null)}><X size={13} /></button>
-                  </Banner>
-                )}
                 {error && (
-                  <Banner tone="danger">
-                    {error}
-                    <button className="banner-close" onClick={() => setError(null)}><X size={13} /></button>
+                  <Banner tone="danger" onClose={() => setError(null)}>{error}</Banner>
+                )}
+
+                {taskStalled && !terminated && (
+                  <Banner tone="warn">
+                    <TriangleAlert size={14} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} />
+                    Task <b className="mono">{wf?.currentTaskRef}</b> đang đứng lâu bất thường (&gt;{Math.round(WORKER_STALL_WARNING_MS / 1000)}s)
+                    mà không cần thao tác của bạn — nhiều khả năng worker BE không poll được task này.
+                    Kiểm tra log app (tìm dòng "Conductor worker polling STARTED") hoặc tab Task Definition trên Orkes Cloud xem có Worker nào đang active không.
                   </Banner>
                 )}
 
-                {!sessionId && (
-                  <StepShell
-                    icon={<PlugZap size={22} />}
-                    eyebrow="Phase 0 · Khởi tạo SDK"
-                    title="Mở tài khoản trong 5 phút"
-                    subtitle="Xác nhận điều kiện mở TK bằng NHĐ13 để bắt đầu."
-                  >
+                {!wfId && (
+                  <StepShell icon={<PlugZap size={22} />} eyebrow="Phase 0 · Khởi tạo SDK" title="Mở tài khoản trong 5 phút"
+                            subtitle="Xác nhận điều kiện mở TK bằng NHĐ13 để bắt đầu.">
                     <Field label="Loại sản phẩm">
                       <select value={form.productType} onChange={(e) => setF("productType", e.target.value)}>
                         <option value="TKTT">Tài khoản thanh toán</option>
                         <option value="TKTT_DEBIT">TKTT + Thẻ Debit</option>
                       </select>
                     </Field>
-                    <PrimaryButton onClick={doInit} loading={loading}>
+                    <Field label="Số điện thoại">
+                      <input className="mono" value={form.phone} onChange={(e) => setF("phone", e.target.value)} />
+                    </Field>
+                    <p className="hint">Số 0901111111 / 0902222222 → demo nhánh khách hàng hiện hữu (ETB).</p>
+                    <PrimaryButton onClick={doStart} loading={loading}>
                       Mở tài khoản ngay <ChevronRight size={16} />
                     </PrimaryButton>
                   </StepShell>
                 )}
 
-                {sessionId && !isTerminated && currentPhase === "DEVICE_CHECK" && (
-                  <StepShell icon={<Smartphone size={22} />} eyebrow="Phase 1 · Thiết bị" title="Kiểm tra thiết bị">
-                    <Field label="Dòng máy">
-                      <input value={form.deviceModel} onChange={(e) => setF("deviceModel", e.target.value)} />
-                    </Field>
-                    <Field label="Hệ điều hành">
-                      <input value={form.osVersion} onChange={(e) => setF("osVersion", e.target.value)} />
-                    </Field>
-                    <Toggle
-                      label="Hỗ trợ đọc NFC"
-                      checked={form.nfcSupported}
-                      onChange={(v) => setF("nfcSupported", v)}
-                    />
-                    <PrimaryButton onClick={doDeviceCheck} loading={loading}>Tiếp tục</PrimaryButton>
-                  </StepShell>
+                {wfId && !terminated && !wf && <StepShell icon={<Smartphone size={22} />} eyebrow="Đang kết nối" title="Đang khởi tạo phiên..." />}
+
+                {wfId && !terminated && wf && !wf.awaitingCustomerInput && (
+                  <StepShell icon={<Smartphone size={22} />} eyebrow="Đang xử lý" title="Hệ thống đang xử lý bước tiếp theo..."
+                            subtitle={wf.currentTaskRef ? `Task: ${wf.currentTaskRef}` : undefined} />
                 )}
 
-                {sessionId && !isTerminated && currentPhase === "CUSTOMER_LOOKUP" && (
-                  <StepShell icon={<Radio size={22} />} eyebrow="Phase 2 · Định danh SĐT" title="Nhập số điện thoại">
-                    <Field label="Số điện thoại">
-                      <input
-                        className="mono"
-                        value={form.phone}
-                        onChange={(e) => setF("phone", e.target.value)}
-                        placeholder="0xxxxxxxxx"
-                      />
-                    </Field>
-                    <p className="hint">Số kết thúc bằng 0901111111 / 0902222222 → demo nhánh khách hàng hiện hữu (ETB).</p>
-                    <PrimaryButton onClick={doLookup} loading={loading}>Tiếp tục</PrimaryButton>
-                  </StepShell>
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_ocr_ref" && (
+                  <EkycStep icon={<Camera size={22} />} eyebrow="Phase 3 · OCR CCCD" title="Chụp 2 mặt CCCD"
+                            subtitle="Đưa CCCD vào khung hình, giữ yên trong 2 giây."
+                            onSubmit={() => doCompleteTask("loop_perform_ocr_ref")} loading={loading}
+                            actionLabel="Chụp CCCD" forceFail={forceFail.ocr}
+                            retryIteration={wf.retryIteration} retryMax={wf.retryMax} />
+                )}
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_liveness_ref" && (
+                  <EkycStep icon={<ScanFace size={22} />} eyebrow="Phase 4 · Liveness" title="Xác thực khuôn mặt"
+                            subtitle="Nhìn thẳng vào camera và làm theo hướng dẫn."
+                            onSubmit={() => doCompleteTask("loop_perform_liveness_ref")} loading={loading}
+                            actionLabel="Bắt đầu quét" forceFail={forceFail.liveness}
+                            retryIteration={wf.retryIteration} retryMax={wf.retryMax} />
+                )}
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_nfc_ref" && (
+                  <EkycStep icon={<Radio size={22} />} eyebrow="Phase 5 · Chip NFC" title="Chạm CCCD vào mặt sau điện thoại"
+                            subtitle="Giữ nguyên vị trí cho tới khi đọc xong chip."
+                            onSubmit={() => doCompleteTask("loop_perform_nfc_ref")} loading={loading}
+                            actionLabel="Đọc chip NFC" forceFail={forceFail.nfc}
+                            retryIteration={wf.retryIteration} retryMax={wf.retryMax} />
                 )}
 
-                {sessionId && !isTerminated && currentPhase === "OCR" && (
-                  <EkycStep
-                    icon={<Camera size={22} />}
-                    eyebrow="Phase 3 · OCR CCCD"
-                    title="Chụp 2 mặt CCCD"
-                    subtitle="Đưa CCCD vào khung hình, giữ yên trong 2 giây."
-                    result={extra.ocr}
-                    onSubmit={() => doEkyc("ocr")}
-                    loading={loading}
-                    actionLabel="Chụp CCCD"
-                    forceFail={forceFail.ocr}
-                  />
-                )}
-
-                {sessionId && !isTerminated && currentPhase === "LIVENESS" && (
-                  <EkycStep
-                    icon={<ScanFace size={22} />}
-                    eyebrow="Phase 4 · Liveness"
-                    title="Xác thực khuôn mặt"
-                    subtitle="Nhìn thẳng vào camera và làm theo hướng dẫn."
-                    result={extra.liveness}
-                    onSubmit={() => doEkyc("liveness")}
-                    loading={loading}
-                    actionLabel="Bắt đầu quét"
-                    forceFail={forceFail.liveness}
-                  />
-                )}
-
-                {sessionId && !isTerminated && currentPhase === "NFC" && (
-                  <EkycStep
-                    icon={<Radio size={22} />}
-                    eyebrow="Phase 5 · Chip NFC"
-                    title="Chạm CCCD vào mặt sau điện thoại"
-                    subtitle="Giữ nguyên vị trí cho tới khi đọc xong chip."
-                    result={extra.nfc}
-                    onSubmit={() => doEkyc("nfc")}
-                    loading={loading}
-                    actionLabel="Đọc chip NFC"
-                    forceFail={forceFail.nfc}
-                  />
-                )}
-
-                {sessionId && !isTerminated && currentPhase === "IDENTITY_CONFIRM" && (
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_identity_confirmation_ref" && (
                   <StepShell icon={<ShieldCheck size={22} />} eyebrow="Phase 6a · Xác nhận" title="Xác nhận thông tin định danh">
                     <div className="kv-card">
-                      <KV label="Họ tên" value={extra.ocr?.passed !== undefined ? "NGUYEN VAN A" : "—"} />
+                      <KV label="Họ tên" value="NGUYEN VAN A" />
                       <KV label="Số CCCD" value="079099001234" mono />
                       <KV label="Địa chỉ" value="123 Nguyễn Trãi, Q1, TP.HCM" />
                     </div>
-                    <PrimaryButton onClick={doIdentityConfirm} loading={loading}>Thông tin chính xác</PrimaryButton>
+                    <PrimaryButton onClick={() => doCompleteTask("show_identity_confirmation_ref")} loading={loading}>
+                      Thông tin chính xác
+                    </PrimaryButton>
                   </StepShell>
                 )}
 
-                {sessionId && !isTerminated && currentPhase === "TNC" && (
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_tnc_screen_ref" && (
                   <StepShell icon={<FileText size={22} />} eyebrow="Phase 6b · Điều khoản" title="Điều khoản & điều kiện">
                     <div className="tnc-box">
                       Tôi đồng ý mở tài khoản thanh toán và (nếu có) thẻ ghi nợ theo Điều kiện điều khoản
                       NHĐ13 của ngân hàng, đồng ý các điều khoản về phí, bảo mật thông tin và sử dụng dịch vụ số.
                     </div>
-                    <Toggle label="Tôi đã đọc và đồng ý" checked={form.tncChecked} onChange={(v) => setF("tncChecked", v)} />
-                    <PrimaryButton onClick={doTnc} disabled={!form.tncChecked} loading={loading}>
+                    <Toggle label="Tôi đã đọc và đồng ý" checked={tncChecked} onChange={setTncChecked} />
+                    <PrimaryButton onClick={() => doCompleteTask("show_tnc_screen_ref")} disabled={!tncChecked} loading={loading}>
                       Xác nhận & tiếp tục
                     </PrimaryButton>
                   </StepShell>
                 )}
 
-                {sessionId && !isTerminated && currentPhase === "OTP" && (
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "verify_otp_ref" && (
                   <StepShell icon={<KeyRound size={22} />} eyebrow="Phase 6c · OTP" title="Xác thực OTP">
-                    {!extra.otpSend ? (
-                      <PrimaryButton onClick={doSendOtp} loading={loading}>Gửi mã OTP</PrimaryButton>
-                    ) : (
-                      <>
-                        <p className="hint">Mã OTP 6 số đã gửi tới {form.phone}, hết hạn sau {extra.otpSend.expiresInSeconds}s.</p>
-                        <Field label="Nhập mã OTP">
-                          <input
-                            className="mono otp-input"
-                            maxLength={8}
-                            value={otpValue}
-                            onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
-                            placeholder="••••••"
-                          />
-                        </Field>
-                        <PrimaryButton onClick={doVerifyOtp} loading={loading} disabled={!otpValue}>Xác nhận</PrimaryButton>
-                        <button className="link-btn" onClick={doSendOtp} disabled={loading}>Gửi lại mã</button>
-                      </>
-                    )}
+                    <p className="hint">Mã OTP 6 số đã gửi tới {form.phone}.</p>
+                    <Field label="Nhập mã OTP">
+                      <input className="mono otp-input" maxLength={8} value={otpValue}
+                            onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))} placeholder="••••••" />
+                    </Field>
+                    <PrimaryButton onClick={() => doCompleteTask("verify_otp_ref")} loading={loading} disabled={!otpValue}>
+                      Xác nhận
+                    </PrimaryButton>
+                    <button className="link-btn" onClick={doPeekOtp} disabled={loading}>
+                      <Eye size={13} /> Xem OTP (debug)
+                    </button>
                   </StepShell>
                 )}
 
-                {sessionId && !isTerminated && currentPhase === "ACCOUNT_CREATION" && (
-                  <StepShell icon={<ShieldCheck size={22} />} eyebrow="Phase 7 · Hoàn tất" title="Tạo tài khoản">
-                    <p className="hint">Mọi bước xác thực đã xong. Bấm để đẩy hồ sơ vào hệ thống lõi.</p>
-                    <PrimaryButton onClick={doCreateAccount} loading={loading}>Hoàn tất mở tài khoản</PrimaryButton>
-                  </StepShell>
-                )}
-
-                {isTerminated && (
-                  <ResultScreen
-                    status={status}
-                    extra={extra}
-                    isEtbRedirect={isEtbRedirect}
-                    onRestart={resetLocal}
-                  />
+                {terminated && (
+                  <ResultScreen wf={wf} onRestart={() => { setWfId(null); setWf(null); }} />
                 )}
               </div>
             </div>
           </div>
-          <div className="phone-caption">Prototype UI — gọi trực tiếp REST API thật, không mock ở FE.</div>
+          <div className="phone-caption">Prototype UI — gọi trực tiếp REST API thật, Orkes Cloud là nguồn sự thật duy nhất cho state.</div>
         </div>
 
         {/* -------------------- SESSION PANEL (desktop) -------------------- */}
         <div className="side-panel">
           <div className="side-card">
             <div className="side-title">Trạng thái phiên</div>
-            {status ? (
+            {wf ? (
               <>
-                <KV label="Session" value={status.sessionId} mono small />
-                <KV label="Phase" value={status.phase} />
-                <KV label="Status" value={<StatusBadge value={status.status} />} />
-                <KV label="Customer type" value={status.customerType || "—"} />
-                <KV label="Dropoff" value={status.dropoff ? "Có" : "Không"} />
-                <KV label="Retry OCR/Liveness/NFC" value={`${status.ocrRetryCount}/${status.livenessRetryCount}/${status.nfcRetryCount}`} />
-                {status.ebankUserId && <KV label="Ebank User" value={status.ebankUserId} mono small />}
-                {status.accountNumber && <KV label="Số TK" value={status.accountNumber} mono />}
+                <KV label="Workflow" value={wf.workflowId} mono small />
+                <KV label="Task hiện tại" value={wf.currentTaskRef || "—"} />
+                <KV label="Status" value={<StatusBadge value={wf.status} />} />
+                {wf.output?.ebankUserId && <KV label="Ebank User" value={wf.output.ebankUserId} mono small />}
+                {wf.output?.accountNumber && <KV label="Số TK" value={wf.output.accountNumber} mono />}
               </>
             ) : (
               <p className="hint">Chưa có phiên nào — bấm "Mở tài khoản ngay" trong app để bắt đầu.</p>
             )}
-            <button className="link-btn" onClick={() => refreshStatus(sessionId)} disabled={!sessionId}>
+            <button className="link-btn" onClick={pollStatus} disabled={!wfId}>
               <RefreshCw size={13} /> Làm mới
             </button>
           </div>
@@ -569,7 +467,6 @@ export default function App() {
           <button className={devTab === "controls" ? "active" : ""} onClick={() => setDevTab("controls")}>Điều khiển</button>
           <button className={devTab === "sessions" ? "active" : ""} onClick={() => setDevTab("sessions")}>Sessions</button>
           <button className={devTab === "raw" ? "active" : ""} onClick={() => setDevTab("raw")}>Raw JSON</button>
-          <button className={devTab === "orkes" ? "active" : ""} onClick={() => setDevTab("orkes")}>Orkes Cloud</button>
         </div>
 
         <div className="dev-body">
@@ -604,9 +501,14 @@ export default function App() {
 
               <div className="dev-section">
                 <div className="dev-section-title">OTP</div>
-                <button className="dev-btn" onClick={doPeekOtp} disabled={!sessionId || loading}>
+                <button className="dev-btn" onClick={doPeekOtp} disabled={!wfId || loading}>
                   <Eye size={14} /> Xem OTP hiện tại (debug endpoint)
                 </button>
+
+                <button className="dev-btn" onClick={doDropoff} disabled={!wfId || loading}>
+                  <LogOut size={14} /> Giả lập thoát app (dropoff)
+                </button>
+                
                 {otpDebug && (
                   <div className="otp-peek mono">
                     {otpDebug.otp} <span className="hint">còn {otpDebug.ttlSecondsRemaining}s</span>
@@ -614,46 +516,14 @@ export default function App() {
                 )}
               </div>
 
-              <div className="dev-section">
-                <div className="dev-section-title">Dropoff</div>
-                <button className="dev-btn" onClick={doMarkDropoff} disabled={!sessionId || loading}>
-                  Giả lập thoát app giữa chừng (test resume)
-                </button>
-              </div>
-
               <div className="dev-section danger">
                 <div className="dev-section-title">Nguy hiểm</div>
                 <button className="dev-btn danger" onClick={doResetAll} disabled={loading}>
                   <Trash2 size={14} /> Xoá toàn bộ dữ liệu demo
                 </button>
-                <p className="hint">Xoá hết session, audit log, OTP trong Redis — dùng /api/onboarding/debug/reset.</p>
+                <p className="hint">Xoá hết audit log, OTP trong Redis — dùng /api/onboarding/debug/reset.</p>
               </div>
             </>
-          )}
-
-          {devTab === "orkes" && (
-            <div className="dev-section">
-              <div className="dev-section-title">Chạy workflow THẬT trên Orkes Cloud</div>
-              <p className="hint">
-                Start workflow <code>vendor_sdk_ekyc_account_opening</code> trên Orkes Cloud (không phải state
-                machine local). Yêu cầu: đã import workflow + task defs lên Orkes, backend chạy với
-                CONDUCTOR_AUTH_KEY/SECRET hợp lệ và conductor.worker.auto-start=true.
-              </p>
-              <button className="dev-btn" onClick={doConductorStart} disabled={loading}>
-                <PlugZap size={14} /> Start workflow trên Orkes Cloud
-              </button>
-              {conductorWorkflowId && (
-                <>
-                  <div className="otp-peek mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
-                    workflowId: {conductorWorkflowId}
-                  </div>
-                  <button className="dev-btn" onClick={doConductorStatus} disabled={loading}>
-                    <RefreshCw size={14} /> Xem trạng thái
-                  </button>
-                </>
-              )}
-              {conductorResult && <pre className="raw-json">{JSON.stringify(conductorResult, null, 2)}</pre>}
-            </div>
           )}
 
           {devTab === "sessions" && (
@@ -663,11 +533,10 @@ export default function App() {
               </button>
               <div className="session-list">
                 {recent.map((s) => (
-                  <div key={s.sessionId} className="session-row mono">
-                    <div>{s.sessionId.slice(0, 8)}…</div>
+                  <div key={s.workflowId} className="session-row mono">
+                    <div>{s.workflowId.slice(0, 8)}…</div>
                     <div>{s.phoneMasked}</div>
-                    <div>{s.phase}</div>
-                    <StatusBadge value={s.status} small />
+                    <div>{s.lastKnownStatus}</div>
                   </div>
                 ))}
                 {recent.length === 0 && <p className="hint">Chưa tải hoặc chưa có session nào.</p>}
@@ -677,10 +546,8 @@ export default function App() {
 
           {devTab === "raw" && (
             <div className="dev-section">
-              <div className="dev-section-title">SessionStatusResponse</div>
-              <pre className="raw-json">{status ? JSON.stringify(status, null, 2) : "// chưa có session"}</pre>
-              <div className="dev-section-title">Response bước gần nhất</div>
-              <pre className="raw-json">{JSON.stringify(extra, null, 2)}</pre>
+              <div className="dev-section-title">WorkflowStatusResponse</div>
+              <pre className="raw-json">{wf ? JSON.stringify(wf, null, 2) : "// chưa có workflow"}</pre>
             </div>
           )}
         </div>
@@ -697,11 +564,6 @@ export default function App() {
 /* ------------------------------------------------------------------ */
 /*  Sub components                                                     */
 /* ------------------------------------------------------------------ */
-
-function labelOf(phaseKey) {
-  const p = FLOW.find((f) => f.key === phaseKey);
-  return p ? p.label : phaseKey;
-}
 
 function Toggle({ label, checked, onChange }) {
   return (
@@ -722,7 +584,7 @@ function KV({ label, value, mono, small }) {
 }
 
 function StatusBadge({ value, small }) {
-  const tone = value === "SUCCESS" ? "success" : value === "NEED_REVIEW" ? "review" : value === "FAILED" ? "danger" : "progress";
+  const tone = value === "SUCCESS" ? "success" : value === "NEED_REVIEW" ? "review" : value === "FAILED" || value === "TERMINATED" ? "danger" : "progress";
   return <span className={`badge badge-${tone} ${small ? "small" : ""}`}>{value}</span>;
 }
 
@@ -742,14 +604,14 @@ function FakeStatusBar() {
   );
 }
 
-function AppHeader({ phone, sessionId }) {
+function AppHeader({ phone, wfId }) {
   return (
     <div className="app-header">
       <div className="app-header-row">
         <div className="brand-mark small">VB</div>
         <div>
           <div className="app-header-title">VietBank Digital</div>
-          <div className="app-header-sub">{sessionId ? `Phiên #${sessionId.slice(0, 8)}` : "Mở tài khoản số"}</div>
+          <div className="app-header-sub">{wfId ? `Phiên #${wfId.slice(0, 8)}` : "Mở tài khoản số"}</div>
         </div>
       </div>
     </div>
@@ -776,8 +638,7 @@ function ProgressRail({ currentKey, terminated }) {
   );
 }
 
-function EkycStep({ icon, eyebrow, title, subtitle, result, onSubmit, loading, actionLabel, forceFail }) {
-  const showRetry = result && !result.passed && result.status === "IN_PROGRESS";
+function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLabel, forceFail, retryIteration, retryMax }) {
   return (
     <StepShell icon={icon} eyebrow={eyebrow} title={title} subtitle={subtitle}>
       <div className="scan-frame">
@@ -786,17 +647,16 @@ function EkycStep({ icon, eyebrow, title, subtitle, result, onSubmit, loading, a
         {icon}
       </div>
       {forceFail && <p className="hint hint-warn">⚠ QA Console đang ép FAIL bước này.</p>}
-      {showRetry && (
-        <Banner tone="danger">
-          Thất bại — lần thử {result.attempt}/{result.maxRetries}. {result.retryAllowed ? "Thử lại nhé." : "Hết lượt thử."}
-        </Banner>
+      {typeof retryIteration === "number" && (
+        <p className="hint">Lần thử {retryIteration}{retryMax ? ` / ${retryMax}` : ""}</p>
       )}
       <PrimaryButton onClick={onSubmit} loading={loading}>{actionLabel}</PrimaryButton>
     </StepShell>
   );
 }
 
-function ResultScreen({ status, extra, isEtbRedirect, onRestart }) {
+function ResultScreen({ wf, onRestart }) {
+  const isEtbRedirect = wf.reasonForIncompletion && wf.reasonForIncompletion.startsWith("ETB_REDIRECT");
   if (isEtbRedirect) {
     return (
       <StepShell icon={<CircleAlert size={22} />} eyebrow="Kết quả" title="Bạn đã có tài khoản">
@@ -805,16 +665,18 @@ function ResultScreen({ status, extra, isEtbRedirect, onRestart }) {
       </StepShell>
     );
   }
-  const tone = status.status === "SUCCESS" ? "success" : status.status === "NEED_REVIEW" ? "review" : "danger";
-  const Icon = status.status === "SUCCESS" ? CircleCheck : status.status === "NEED_REVIEW" ? CircleAlert : CircleX;
-  const title = status.status === "SUCCESS" ? "Mở tài khoản thành công!" : status.status === "NEED_REVIEW" ? "Hồ sơ đang được xét duyệt" : "Không thể mở tài khoản";
+  const finalStatus = wf.output?.finalStatus || wf.status;
+  const tone = finalStatus === "SUCCESS" ? "success" : finalStatus === "NEED_REVIEW" ? "review" : "danger";
+  const Icon = finalStatus === "SUCCESS" ? CircleCheck : finalStatus === "NEED_REVIEW" ? CircleAlert : CircleX;
+  const title = finalStatus === "SUCCESS" ? "Mở tài khoản thành công!" : finalStatus === "NEED_REVIEW" ? "Hồ sơ đang được xét duyệt" : "Không thể mở tài khoản";
   return (
     <StepShell icon={<Icon size={22} />} eyebrow="Kết quả cuối cùng" title={title}>
       <div className={`result-panel result-${tone}`}>
-        {status.accountNumber && <KV label="Số tài khoản" value={status.accountNumber} mono />}
-        {status.ebankUserId && <KV label="Ebank User ID" value={status.ebankUserId} mono small />}
-        {status.linkId && <KV label="Link ID" value={status.linkId} mono small />}
-        {status.terminationReason && <KV label="Lý do" value={status.terminationReason} />}
+        {wf.output?.accountNumber && <KV label="Số tài khoản" value={wf.output.accountNumber} mono />}
+        {wf.output?.ebankUserId && <KV label="Ebank User ID" value={wf.output.ebankUserId} mono small />}
+        {wf.output?.linkId && <KV label="Link ID" value={wf.output.linkId} mono small />}
+        {(wf.output?.failureReason || wf.reasonForIncompletion) &&
+          <KV label="Lý do" value={wf.output?.failureReason || wf.reasonForIncompletion} />}
       </div>
       <PrimaryButton onClick={onRestart}>Bắt đầu phiên mới</PrimaryButton>
     </StepShell>
@@ -925,9 +787,10 @@ function StyleBlock() {
       .hint{font-size:12px;color:var(--ink-soft);margin:0;}
       .hint-warn{color:var(--gold);font-weight:600;}
 
-      .banner{border-radius:12px;padding:11px 14px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .banner{border-radius:12px;padding:11px 14px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;line-height:1.5;}
       .banner-info{background:#E7F6F4;color:var(--teal-dk);}
       .banner-danger{background:#FDECEC;color:#B3261E;}
+      .banner-warn{background:#FDF3E3;color:#9A6300;}
       .banner-close{background:none;border:none;cursor:pointer;color:inherit;opacity:.6;flex-shrink:0;}
 
       .toggle-row{width:100%;display:flex;align-items:center;justify-content:space-between;background:#F6F8FC;

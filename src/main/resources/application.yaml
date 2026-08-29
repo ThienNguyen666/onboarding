@@ -21,6 +21,8 @@ spring:
 
 app:
   onboarding:
+    cors:
+      allowed-origins: ${ALLOWED_ORIGINS:*}
     retry:
       default-max-ocr-retries: 3
       default-max-liveness-retries: 3
@@ -43,14 +45,16 @@ logging:
 
 conductor:
   server:
-    url: ${CONDUCTOR_SERVER_URL:}
+    url: ${CONDUCTOR_SERVER_URL:https://developer.orkescloud.com/api}
     auth-key: ${CONDUCTOR_AUTH_KEY:}
     auth-secret: ${CONDUCTOR_AUTH_SECRET:}
   worker:
-    auto-start: ${CONDUCTOR_WORKER_AUTO_START:false}
+    auto-start: ${CONDUCTOR_WORKER_AUTO_START:true}
+    thread-count: ${CONDUCTOR_WORKER_THREAD_COUNT:10}
+    polling-interval-ms: ${CONDUCTOR_WORKER_POLLING_INTERVAL_MS:1000}
   workflow:
     name: vendor_sdk_ekyc_account_opening
-    version: 2
+    version: 4
 
 management:
   endpoints:
