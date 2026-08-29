@@ -23,6 +23,10 @@ app:
   onboarding:
     cors:
       allowed-origins: ${ALLOWED_ORIGINS:*}
+    retry:
+      default-max-ocr-retries: 3
+      default-max-liveness-retries: 3
+      default-max-nfc-retries: 3
     otp:
       length: 6
       ttl-seconds: 300
