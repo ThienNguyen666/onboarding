@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Cầu nối cho 6 task asyncComplete=true trong Orkes — 
@@ -28,7 +29,10 @@ public class ConductorTaskSignalService {
     private final MockEkycService mockEkycService;
     private final OtpService otpService;
     private final CustomerDirectoryService customerDirectoryService;
-
+    
+    private static final Set<Task.Status> COMPLETABLE_STATUSES =
+            Set.of(Task.Status.IN_PROGRESS, Task.Status.SCHEDULED);
+    
     public Map<String, Object> completeTask(String workflowId, String taskRefName, TaskSignalRequest req) {
         Workflow workflow = workflowClient.getWorkflow(workflowId, true);
         Task task = findInProgressTaskWithRetry(workflowId, taskRefName);
@@ -83,7 +87,7 @@ public class ConductorTaskSignalService {
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
         // Budget đủ lớn: chịu được worker pollingIntervalMs (mặc định 1000ms) + độ trễ Orkes Cloud
         // + trường hợp hàng đợi task cùng loại (perform_ocr_cccd/liveness/nfc/...) đang tồn đọng.
-        int maxAttempts = 12;
+        int maxAttempts = 20;
         long delayMs = 400;
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
             try {
@@ -96,20 +100,22 @@ public class ConductorTaskSignalService {
                 log.warn("getWorkflow lỗi tạm thời (attempt {}/{}): {}", attempt + 1, maxAttempts, e.getMessage());
             }
             try {
-                Thread.sleep(Math.min(delayMs, 2000));
+                Thread.sleep(Math.min(delayMs, 3000));
                 delayMs = (long) (delayMs * 1.6);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
-        throw OnboardingException.badState(
-                "Task '" + taskRefName + "' hiện không ở trạng thái IN_PROGRESS trong workflow " + workflowId
-                        + " (khả năng: worker BE chưa poll kịp, hoặc mất kết nối tới Orkes Cloud)");
+    throw OnboardingException.badState(
+        "Task '" + taskRefName + "' hiện không ở trạng thái SCHEDULED/IN_PROGRESS trong workflow " + workflowId
+                + " (khả năng: worker BE chưa poll kịp, hoặc mất kết nối tới Orkes Cloud)");
     }   
+
     private Task findInProgressTask(Workflow workflow, String taskRefName) {
         return workflow.getTasks().stream()
-                .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName) && t.getStatus() == Task.Status.IN_PROGRESS)
+                .filter(t -> matchesRef(t.getReferenceTaskName(), taskRefName)
+                        && COMPLETABLE_STATUSES.contains(t.getStatus()))
                 .reduce((first, second) -> second)
                 .orElse(null);
     }
