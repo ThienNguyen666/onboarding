@@ -2,11 +2,14 @@ package com.bank.onboarding.service;
 
 import com.bank.onboarding.dto.TaskSignalRequest;
 import com.bank.onboarding.exception.OnboardingException;
+import com.bank.onboarding.config.OnboardingProperties;
+
 import com.netflix.conductor.client.http.TaskClient;
 import com.netflix.conductor.client.http.WorkflowClient;
 import com.netflix.conductor.common.metadata.tasks.Task;
 import com.netflix.conductor.common.metadata.tasks.TaskResult;
 import com.netflix.conductor.common.run.Workflow;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,12 +32,15 @@ public class ConductorTaskSignalService {
     private final MockEkycService mockEkycService;
     private final OtpService otpService;
     private final CustomerDirectoryService customerDirectoryService;
-    
+    private final OnboardingProperties onboardingProperties;
+
     private static final Set<Task.Status> COMPLETABLE_STATUSES =
             Set.of(Task.Status.IN_PROGRESS, Task.Status.SCHEDULED);
     
-    public Map<String, Object> completeTask(String workflowId, String taskRefName, TaskSignalRequest req) {
-        Workflow workflow = workflowClient.getWorkflow(workflowId, true);
+
+    public Map<String, Object> completeTask(String workflowId, String taskRefName, TaskSignalRequest rawReq) {
+        TaskSignalRequest req = guardForceFail(rawReq);
+        Workflow workflow = workflowClient.getWorkflow(workflowId, true);        
         Task task = findInProgressTaskWithRetry(workflowId, taskRefName);
 
         TaskResult result = new TaskResult();
@@ -121,6 +127,13 @@ public class ConductorTaskSignalService {
     }
     // Cùng gốc bug với WorkflowStatusMapper: task trong DO_WHILE có referenceTaskName runtime
     // dạng "<ref>__<iteration>". So khớp cả 2 dạng (có/không hậu tố).
+    private TaskSignalRequest guardForceFail(TaskSignalRequest req) {
+        if (req.forceFail() && !onboardingProperties.otp().debugEndpointEnabled()) {
+            log.warn("forceFail bị bỏ qua vì debug endpoint đang tắt — task sẽ chạy nhánh PASS bình thường");
+            return new TaskSignalRequest(false, req.outputData());
+        }
+        return req;
+    }
     private boolean matchesRef(String actualRef, String expectedRef) {
         return actualRef.equals(expectedRef) || actualRef.startsWith(expectedRef + "__");
     }

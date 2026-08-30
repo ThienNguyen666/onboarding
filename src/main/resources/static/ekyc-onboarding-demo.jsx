@@ -3,7 +3,7 @@ import {
   Settings2, X, RefreshCw, Trash2, ChevronRight,
   ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut
+  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut, Copy, Moon, Sun
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
 
@@ -53,17 +53,6 @@ const FLOW = [
   { key: "DONE", label: "Hoàn tất", lane: "sys" },
 ];
 
-// 6 human-task ref phải khớp CHÍNH XÁC với WorkflowStatusMapper.HUMAN_TASK_REFS (BE)
-// và với asyncComplete=true trong workflow JSON (vendor_sdk_ekyc_account_opening).
-const HUMAN_TASK_REFS = new Set([
-  "loop_perform_ocr_ref",
-  "loop_perform_liveness_ref",
-  "loop_perform_nfc_ref",
-  "show_identity_confirmation_ref",
-  "show_tnc_screen_ref",
-  "verify_otp_ref",
-]);
-
 // Nếu 1 task KHÔNG phải human-task mà đứng RUNNING quá lâu -> nhiều khả năng
 // worker BE không poll được (regression của lỗi classpath-scan trong fat jar).
 const WORKER_STALL_WARNING_MS = 12000;
@@ -76,7 +65,29 @@ function phaseIndex(key) {
 function randomId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
+function copyToClipboard(text, key, setCopiedKey) {
+  if (!text) return;
+  navigator.clipboard?.writeText(String(text)).then(() => {
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
+  });
+}
 
+function KV({ label, value, mono, small, onCopyClick, copied }) {
+  return (
+    <div className="kv-row">
+      <span className="kv-label">{label}</span>
+      <span className={`kv-value ${mono ? "mono" : ""} ${small ? "small" : ""}`}>
+        {value}
+        {onCopyClick && (
+          <button type="button" className="copy-btn" onClick={onCopyClick} title="Sao chép">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
 /* ------------------------------------------------------------------ */
 /*  Small UI atoms                                                     */
 /* ------------------------------------------------------------------ */
@@ -152,6 +163,10 @@ export default function App() {
   const taskSinceRef = useRef(null);
   const lastRefRef = useRef(null);
 
+  const [darkMode, setDarkMode] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [otpCountdown, setOtpCountdown] = useState(null);
+
   const [form, setForm] = useState({
     vendorId: "VENDOR_BANK_APP",
     sdkSessionId: randomId("SDK"),
@@ -202,6 +217,19 @@ export default function App() {
     return () => clearInterval(t);
   }, [wfId, pollStatus]);
 
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 6000);
+    return () => clearTimeout(t);
+  }, [error]);
+
+  useEffect(() => {
+    if (otpDebug == null) return;
+    setOtpCountdown(otpDebug.ttlSecondsRemaining);
+    const t = setInterval(() => setOtpCountdown((s) => (s == null || s <= 1 ? 0 : s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [otpDebug]);
+
   // Phát hiện task đứng lâu bất thường: chỉ áp dụng cho task KHÔNG cần thao
   // tác KH (awaitingCustomerInput=false) — vì đó là lúc BE worker phải tự
   // xử lý xong trong vài trăm ms, không phải chờ người dùng.
@@ -233,9 +261,6 @@ export default function App() {
         deviceInfo: { model: form.deviceModel, osVersion: form.osVersion, nfcSupported: form.nfcSupported },
         phone: form.phone,
         vendorId: form.vendorId,
-        maxOcrRetries: 3,
-        maxLivenessRetries: 3,
-        maxNfcRetries: 3,
         forceComplianceResult: forceCompliance || null,
       });
       setWfId(res.workflowId);
@@ -292,10 +317,10 @@ export default function App() {
   const terminated = currentPhase === "DONE";
 
   return (
-    <div className="stage">
+    <div className={`stage ${darkMode ? "dark" : ""}`}>
       <StyleBlock />
-
       <div className="topbar">
+        
         <div className="topbar-brand">
           <div className="brand-mark">VB</div>
           <div>
@@ -303,9 +328,15 @@ export default function App() {
             <div className="brand-sub mono">{baseUrl}</div>
           </div>
         </div>
-        <button className="dev-fab-inline" onClick={() => setDevOpen(true)}>
-          <Settings2 size={16} /> QA Console
-        </button>
+
+        <div className="topbar-actions">
+          <button className="icon-toggle" onClick={() => setDarkMode((d) => !d)} title="Đổi giao diện sáng/tối">
+            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button className="dev-fab-inline" onClick={() => setDevOpen(true)}>
+            <Settings2 size={16} /> QA Console
+          </button>
+        </div>
       </div>
 
       <div className="layout">
@@ -423,7 +454,8 @@ export default function App() {
                 )}
 
                 {terminated && (
-                  <ResultScreen wf={wf} onRestart={() => { setWfId(null); setWf(null); }} />
+                  <ResultScreen wf={wf} onRestart={() => { setWfId(null); setWf(null); }}
+                                copiedKey={copiedKey} onCopy={(t, k) => copyToClipboard(t, k, setCopiedKey)} />                
                 )}
               </div>
             </div>
@@ -437,7 +469,9 @@ export default function App() {
             <div className="side-title">Trạng thái phiên</div>
             {wf ? (
               <>
-                <KV label="Workflow" value={wf.workflowId} mono small />
+                <KV label="Workflow" value={wf.workflowId} mono small
+                    onCopyClick={() => copyToClipboard(wf.workflowId, "wf", setCopiedKey)}
+                    copied={copiedKey === "wf"} />                
                 <KV label="Task hiện tại" value={wf.currentTaskRef || "—"} />
                 <KV label="Status" value={<StatusBadge value={wf.status} />} />
                 {wf.output?.ebankUserId && <KV label="Ebank User" value={wf.output.ebankUserId} mono small />}
@@ -511,7 +545,13 @@ export default function App() {
                 
                 {otpDebug && (
                   <div className="otp-peek mono">
-                    {otpDebug.otp} <span className="hint">còn {otpDebug.ttlSecondsRemaining}s</span>
+                    <span>{otpDebug.otp}</span>
+                    <button type="button" className="copy-btn" onClick={() => copyToClipboard(otpDebug.otp, "otp", setCopiedKey)} title="Sao chép OTP">
+                      {copiedKey === "otp" ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                    <span className="hint">
+                      {otpCountdown > 0 ? `hết hạn sau ${otpCountdown}s` : "đã hết hạn — bấm Xem OTP để lấy mã mới"}
+                    </span>
                   </div>
                 )}
               </div>
@@ -574,15 +614,6 @@ function Toggle({ label, checked, onChange }) {
   );
 }
 
-function KV({ label, value, mono, small }) {
-  return (
-    <div className="kv-row">
-      <span className="kv-label">{label}</span>
-      <span className={`kv-value ${mono ? "mono" : ""} ${small ? "small" : ""}`}>{value}</span>
-    </div>
-  );
-}
-
 function StatusBadge({ value, small }) {
   const tone = value === "SUCCESS" ? "success" : value === "NEED_REVIEW" ? "review" : value === "FAILED" || value === "TERMINATED" ? "danger" : "progress";
   return <span className={`badge badge-${tone} ${small ? "small" : ""}`}>{value}</span>;
@@ -620,8 +651,11 @@ function AppHeader({ phone, wfId }) {
 
 function ProgressRail({ currentKey, terminated }) {
   const idx = terminated ? FLOW.length - 1 : phaseIndex(currentKey);
+  const pct = Math.round((idx / (FLOW.length - 1)) * 100);
+  
   return (
     <div className="rail">
+      <div className="rail-progress"><div className="rail-progress-fill" style={{ width: `${pct}%` }} /></div>
       <div className="rail-track">
         {FLOW.map((p, i) => (
           <div key={p.key} className={`rail-pill ${i < idx ? "done" : i === idx ? "active" : ""} lane-${p.lane}`}>
@@ -655,7 +689,7 @@ function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLab
   );
 }
 
-function ResultScreen({ wf, onRestart }) {
+function ResultScreen({ wf, onRestart, copiedKey, onCopy }) {
   const isEtbRedirect = wf.reasonForIncompletion && wf.reasonForIncompletion.startsWith("ETB_REDIRECT");
   if (isEtbRedirect) {
     return (
@@ -672,7 +706,10 @@ function ResultScreen({ wf, onRestart }) {
   return (
     <StepShell icon={<Icon size={22} />} eyebrow="Kết quả cuối cùng" title={title}>
       <div className={`result-panel result-${tone}`}>
-        {wf.output?.accountNumber && <KV label="Số tài khoản" value={wf.output.accountNumber} mono />}
+        {wf.output?.accountNumber && (
+          <KV label="Số tài khoản" value={wf.output.accountNumber} mono
+              onCopyClick={() => onCopy(wf.output.accountNumber, "acc")} copied={copiedKey === "acc"} />
+        )}        
         {wf.output?.ebankUserId && <KV label="Ebank User ID" value={wf.output.ebankUserId} mono small />}
         {wf.output?.linkId && <KV label="Link ID" value={wf.output.linkId} mono small />}
         {(wf.output?.failureReason || wf.reasonForIncompletion) &&
@@ -867,6 +904,24 @@ function StyleBlock() {
         .layout{flex-direction:column;align-items:center;}
         .side-panel{width:100%;max-width:380px;}
       }
+      .copy-btn{background:none;border:none;cursor:pointer;color:var(--ink-soft);padding:2px 4px;margin-left:6px;
+        display:inline-flex;vertical-align:-2px;border-radius:6px;}
+      .copy-btn:hover{color:var(--teal-dk);background:rgba(15,184,160,.1);}
+
+      .rail-progress{height:3px;background:var(--line);border-radius:99px;margin-bottom:8px;overflow:hidden;}
+      .rail-progress-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-dk));transition:width .4s ease;}
+
+      .step-card{animation:stepIn .35s ease both;}
+      @keyframes stepIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+      .topbar-actions{display:flex;align-items:center;gap:8px;}
+      .icon-toggle{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--surface);
+        color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .icon-toggle:hover{border-color:var(--teal);color:var(--teal-dk);}
+
+      .stage.dark{--bg:#0B1626;--surface:#132038;--ink:#E7EEF7;--ink-soft:#93A5C0;--line:#233553;}
+      .stage.dark .scan-frame{background:#050C16;}
+      .stage.dark .kv-card,.stage.dark .tnc-box,.stage.dark .toggle-row{background:#0F1C32;}
     `}</style>
   );
 }

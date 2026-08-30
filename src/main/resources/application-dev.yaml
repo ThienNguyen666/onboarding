@@ -1,0 +1,10 @@
+app:
+  onboarding:
+    cors:
+      allowed-origins: "*"
+    otp:
+      debug-endpoint-enabled: true
+
+logging:
+  level:
+    "[com.bank.onboarding]": DEBUG

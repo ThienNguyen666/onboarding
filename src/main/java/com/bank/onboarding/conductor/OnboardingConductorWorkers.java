@@ -29,6 +29,15 @@ public class OnboardingConductorWorkers {
       private final OnboardingSessionRepository sessionRepository;
       private final AuditLogRepository auditLogRepository;
 
+      private Map<String, Object> notifyVendor(String vendorId, String refId, String status, String reason) {
+            notificationMockService.notifyVendor(vendorId, refId, status, reason);
+            return Map.of("notified", true);
+      }
+
+      private Map<String, Object> sendOtt(String customerId, String templateId) {
+            notificationMockService.sendOtt(customerId, customerId, templateId);
+            return Map.of("sent", true);
+      }
       // ---------------- Phase 0 ----------------
       @WorkerTask("get_vendor_access_token")
       public Map<String, Object> getVendorAccessToken() {
@@ -189,50 +198,43 @@ public class OnboardingConductorWorkers {
       @WorkerTask("notify_vendor_success")
       public Map<String, Object> notifyVendorSuccess(@InputParam("vendorId") String vendorId,
                                                       @InputParam("ebankUserId") String ebankUserId) {
-            notificationMockService.notifyVendor(vendorId, ebankUserId, "SUCCESS", null);
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, ebankUserId, "SUCCESS", null);
       }
 
       @WorkerTask("notify_vendor_need_review")
       public Map<String, Object> notifyVendorNeedReview(@InputParam("vendorId") String vendorId,
                                                             @InputParam("customerId") String customerId) {
-            notificationMockService.notifyVendor(vendorId, customerId, "NEED_REVIEW", null);
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, customerId, "NEED_REVIEW", null);
       }
 
       @WorkerTask("notify_vendor_failed")
       public Map<String, Object> notifyVendorFailed(@InputParam("vendorId") String vendorId,
                                                       @InputParam("customerId") String customerId,
                                                       @InputParam("reason") String reason) {
-            notificationMockService.notifyVendor(vendorId, customerId, "FAILED", reason);
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, customerId, "FAILED", reason);
       }
 
       @WorkerTask("notify_vendor_unknown_error")
       public Map<String, Object> notifyVendorUnknownError(@InputParam("vendorId") String vendorId,
                                                             @InputParam("customerId") String customerId) {
-            notificationMockService.notifyVendor(vendorId, customerId, "FAILED", "Unknown conductor processing result");
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, customerId, "FAILED", "Unknown conductor processing result");
       }
 
       @WorkerTask("send_ott_success")
       public Map<String, Object> sendOttSuccess(@InputParam("customerId") String customerId) {
-            notificationMockService.sendOtt(customerId, customerId, "ACCOUNT_OPEN_SUCCESS");
-            return Map.of("sent", true);
+            return sendOtt(customerId, "ACCOUNT_OPEN_SUCCESS");
       }
 
       @WorkerTask("send_ott_need_review")
       public Map<String, Object> sendOttNeedReview(@InputParam("customerId") String customerId) {
-            notificationMockService.sendOtt(customerId, customerId, "ACCOUNT_PENDING_REVIEW");
-            return Map.of("sent", true);
+            return sendOtt(customerId, "ACCOUNT_PENDING_REVIEW");
       }
 
       @WorkerTask("send_ott_failed")
       public Map<String, Object> sendOttFailed(@InputParam("customerId") String customerId) {
-            notificationMockService.sendOtt(customerId, customerId, "ACCOUNT_OPEN_FAILED");
-            return Map.of("sent", true);
+            return sendOtt(customerId, "ACCOUNT_OPEN_FAILED");
       }
-
+      
       @WorkerTask("cleanup_vendor_sdk_session")
       public Map<String, Object> cleanupVendorSdkSession() {
             return Map.of("cleaned", true);

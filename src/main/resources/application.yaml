@@ -1,12 +1,23 @@
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   application:
     name: onboarding
+
+  threads:
+    virtual:
+      enabled: true
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:postgres}:5432/onboarding
     username: onboarding
     password: onboarding
     driver-class-name: org.postgresql.Driver
+    connection-fetch: lazy
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:8}
+      minimum-idle: 2
 
   jpa:
     hibernate:
@@ -22,7 +33,8 @@ spring:
 app:
   onboarding:
     cors:
-      allowed-origins: ${ALLOWED_ORIGINS:*}
+      # Mặc định KHÔNG bật CORS (an toàn) — profile dev sẽ mở "*", profile prod bắt buộc set rõ domain.
+      allowed-origins: ${ALLOWED_ORIGINS:}
     retry:
       default-max-ocr-retries: 3
       default-max-liveness-retries: 3
@@ -31,17 +43,14 @@ app:
       length: 6
       ttl-seconds: 300
       max-verify-attempts: 5
-      debug-endpoint-enabled: true
+      # Mặc định TẮT — profile dev bật lại. Không để lộ debug endpoint ra ngoài ý muốn.
+      debug-endpoint-enabled: false
     dropoff:
       ttl-hours: 24
     ekyc-mock:
       always-pass-by-default: true
     compliance-mock:
       strategy: RULE_BASED
-
-logging:
-  level:
-    "[com.bank.onboarding]": DEBUG
 
 conductor:
   server:
@@ -64,6 +73,18 @@ management:
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
 
 server:
   shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,application/javascript,image/svg+xml
+    min-response-size: 1024
+
+springdoc:
+  swagger-ui:
+    path: /docs
+  api-docs:
+    path: /v3/api-docs
