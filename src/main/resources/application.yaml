@@ -21,9 +21,14 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
     show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
 
   data:
     redis:
@@ -32,6 +37,12 @@ spring:
 
 app:
   onboarding:
+    security:
+      enabled: ${VENDOR_AUTH_ENABLED:true}
+    vendors:
+      VENDOR_BANK_APP:
+        api-key: ${VENDOR_BANK_APP_API_KEY:demo-api-key}
+        secret: ${VENDOR_BANK_APP_SECRET:demo-secret}
     cors:
       # Mặc định KHÔNG bật CORS (an toàn) — profile dev sẽ mở "*", profile prod bắt buộc set rõ domain.
       allowed-origins: ${ALLOWED_ORIGINS:}
@@ -88,3 +99,19 @@ springdoc:
     path: /docs
   api-docs:
     path: /v3/api-docs
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      orkes:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 5
+        register-health-indicator: true
+  retry:
+    instances:
+      orkes:
+        max-attempts: 3
+        wait-duration: 500ms

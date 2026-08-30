@@ -4,7 +4,8 @@ app:
       allowed-origins: "*"
     otp:
       debug-endpoint-enabled: true
-
+    security:
+      enabled: false
 logging:
   level:
     "[com.bank.onboarding]": DEBUG

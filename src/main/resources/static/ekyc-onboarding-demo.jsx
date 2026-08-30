@@ -27,8 +27,8 @@ async function api(baseUrl, path, method = "GET", body) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    const err = new Error((data && data.message) || `HTTP ${res.status}`);
-    err.code = data && data.code;
+    const err = new Error((data && data.detail) || `HTTP ${res.status}`);
+    err.code = data && data.properties && data.properties.code;
     err.status = res.status;
     throw err;
   }
