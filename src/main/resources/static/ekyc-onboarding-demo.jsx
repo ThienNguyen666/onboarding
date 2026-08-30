@@ -3,7 +3,8 @@ import {
   Settings2, X, RefreshCw, Trash2, ChevronRight,
   ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
   CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut, Copy, Moon, Sun
+  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut, Copy, Moon, Sun,
+  Gift, Percent, Zap, CreditCard, Sparkles
 } from "lucide-react";
 import { createRoot } from "react-dom/client";
 
@@ -389,6 +390,11 @@ export default function App() {
                             subtitle={wf.currentTaskRef ? `Task: ${wf.currentTaskRef}` : undefined} />
                 )}
 
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_cvp_ref" && (
+                  <CvpStep productType={form.productType}
+                          onSubmit={() => doCompleteTask("show_cvp_ref")} loading={loading} />
+                )}
+
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_ocr_ref" && (
                   <EkycStep icon={<Camera size={22} />} eyebrow="Phase 3 · OCR CCCD" title="Chụp 2 mặt CCCD"
                             subtitle="Đưa CCCD vào khung hình, giữ yên trong 2 giây."
@@ -688,7 +694,43 @@ function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLab
     </StepShell>
   );
 }
+function CvpPerk({ icon, title, desc }) {
+  return (
+    <div className="perk-row">
+      <div className="perk-icon">{icon}</div>
+      <div>
+        <div className="perk-title">{title}</div>
+        <div className="perk-desc">{desc}</div>
+      </div>
+    </div>
+  );
+}
 
+function CvpStep({ productType, onSubmit, loading }) {
+  const [agreed, setAgreed] = useState(false);
+  const isDebit = productType === "TKTT_DEBIT";
+  return (
+    <StepShell icon={<Sparkles size={22} />} eyebrow="Chào mừng bạn 👋" title="Mở tài khoản, nhận ngay ưu đãi"
+               subtitle="Chỉ mất 5 phút — đây là những gì bạn được:">
+      <div className="cvp-perks">
+        <CvpPerk icon={<Gift size={18} />} title="Tặng 100.000đ vào ví"
+                 desc="Cộng ngay sau khi mở tài khoản thành công" />
+        <CvpPerk icon={<Zap size={18} />} title="Chuyển tiền 24/7 miễn phí"
+                 desc="Không giới hạn số lần, tới mọi ngân hàng" />
+        <CvpPerk icon={<Percent size={18} />} title="Lãi suất không kỳ hạn 0.5%/năm"
+                 desc="Tự động cộng dồn mỗi ngày, không cần thao tác gì" />
+        {isDebit && (
+          <CvpPerk icon={<CreditCard size={18} />} title="Kèm thẻ Debit contactless"
+                   desc="Hoàn tiền 1% mọi giao dịch trong 3 tháng đầu" />
+        )}
+      </div>
+      <Toggle label="Tôi đã đọc và đồng ý Điều khoản NHĐ13" checked={agreed} onChange={setAgreed} />
+      <PrimaryButton onClick={onSubmit} disabled={!agreed} loading={loading}>
+        Xác nhận & Mở TK ngay <ChevronRight size={16} />
+      </PrimaryButton>
+    </StepShell>
+  );
+}
 function ResultScreen({ wf, onRestart, copiedKey, onCopy }) {
   const isEtbRedirect = wf.reasonForIncompletion && wf.reasonForIncompletion.startsWith("ETB_REDIRECT");
   if (isEtbRedirect) {
@@ -849,6 +891,14 @@ function StyleBlock() {
       .kv-label{color:var(--ink-soft);}
       .kv-value{font-weight:600;text-align:right;}
       .kv-value.small{font-size:11px;}
+
+      .cvp-perks{display:flex;flex-direction:column;gap:10px;background:#F6F8FC;border-radius:14px;padding:12px 14px;}
+      .perk-row{display:flex;gap:12px;align-items:flex-start;}
+      .perk-icon{width:34px;height:34px;border-radius:10px;flex-shrink:0;background:linear-gradient(135deg,var(--gold),#d88a1f);
+        color:#fff;display:flex;align-items:center;justify-content:center;}
+      .perk-title{font-size:13px;font-weight:700;color:var(--ink);}
+      .perk-desc{font-size:11.5px;color:var(--ink-soft);margin-top:1px;line-height:1.4;}
+      .stage.dark .cvp-perks{background:#0F1C32;}
 
       .tnc-box{background:#F6F8FC;border-radius:12px;padding:14px;font-size:12px;color:var(--ink-soft);
         max-height:110px;overflow-y:auto;line-height:1.5;}

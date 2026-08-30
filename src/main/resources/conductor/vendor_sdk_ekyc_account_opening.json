@@ -45,7 +45,7 @@
       "joinOn": [],
       "optional": false,
       "defaultExclusiveJoinTask": [],
-      "asyncComplete": false,
+      "asyncComplete": true,
       "loopOver": [],
       "onStateChange": {},
       "permissive": false,

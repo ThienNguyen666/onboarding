@@ -29,6 +29,7 @@ import java.util.Set;
 public class SpringWorkerAdapter implements Worker {
 
     private static final Set<String> ASYNC_COMPLETE_TASKS = Set.of(
+            "show_cvp_and_confirm_consent",
             "perform_ocr_cccd", "perform_liveness", "perform_nfc",
             "verify_otp", "show_identity_confirmation", "show_tnc_screen"
     );

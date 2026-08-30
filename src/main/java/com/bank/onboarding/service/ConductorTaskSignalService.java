@@ -49,6 +49,7 @@ public class ConductorTaskSignalService {
         result.setStatus(TaskResult.Status.COMPLETED); // pass/fail thật do task validate_*/SWITCH phía sau quyết định
 
         switch (taskRefName) {
+            case "show_cvp_ref" -> result.setOutputData(Map.of("consented", true));
             case "show_identity_confirmation_ref" -> result.setOutputData(Map.of("confirmed", true));
             case "show_tnc_screen_ref" -> result.setOutputData(Map.of("tncAccepted", true));
             case "loop_perform_ocr_ref" ->

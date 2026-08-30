@@ -46,7 +46,7 @@ public class OnboardingConductorWorkers {
 
       @WorkerTask("show_cvp_and_confirm_consent")
       public Map<String, Object> showCvpAndConfirmConsent() {
-            return Map.of("consented", true);
+            return Map.of("awaitingCustomerAction", true);
       }
 
       // ---------------- Phase 1 ----------------
