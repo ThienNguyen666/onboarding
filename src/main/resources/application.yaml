@@ -38,7 +38,7 @@ spring:
 app:
   onboarding:
     security:
-      enabled: ${VENDOR_AUTH_ENABLED:true}
+      enabled: ${VENDOR_AUTH_ENABLED:false}
     vendors:
       VENDOR_BANK_APP:
         api-key: ${VENDOR_BANK_APP_API_KEY:demo-api-key}
