@@ -74,7 +74,7 @@ function copyToClipboard(text, key, setCopiedKey) {
   });
 }
 
-function KV({ label, value, mono, small, onCopyClick, copied }) {
+const KV = React.memo(function KV({ label, value, mono, small, onCopyClick, copied }) {
   return (
     <div className="kv-row">
       <span className="kv-label">{label}</span>
@@ -88,7 +88,7 @@ function KV({ label, value, mono, small, onCopyClick, copied }) {
       </span>
     </div>
   );
-}
+});
 /* ------------------------------------------------------------------ */
 /*  Small UI atoms                                                     */
 /* ------------------------------------------------------------------ */
@@ -137,6 +137,16 @@ function StepShell({ icon, eyebrow, title, subtitle, children }) {
   );
 }
 
+function StepSkeleton() {
+  return (
+    <div className="card step-card skeleton-card">
+      <div className="skel skel-icon" />
+      <div className="skel skel-line w40" />
+      <div className="skel skel-line w70" />
+      <div className="skel skel-line w55" />
+    </div>
+  );
+}
 /* ------------------------------------------------------------------ */
 /*  Main App                                                           */
 /* ------------------------------------------------------------------ */
@@ -207,7 +217,7 @@ export default function App() {
     if (!wfId) return;
     try {
       const res = await api(baseUrl, `/api/conductor/${wfId}`);
-      setWf(res);
+      setWf((prev) => (JSON.stringify(prev) === JSON.stringify(res) ? prev : res));
     } catch (e) { /* transient, giữ nguyên state cũ */ }
   }, [baseUrl, wfId]);
 
@@ -386,8 +396,7 @@ export default function App() {
                 {wfId && !terminated && !wf && <StepShell icon={<Smartphone size={22} />} eyebrow="Đang kết nối" title="Đang khởi tạo phiên..." />}
 
                 {wfId && !terminated && wf && !wf.awaitingCustomerInput && (
-                  <StepShell icon={<Smartphone size={22} />} eyebrow="Đang xử lý" title="Hệ thống đang xử lý bước tiếp theo..."
-                            subtitle={wf.currentTaskRef ? `Task: ${wf.currentTaskRef}` : undefined} />
+                  <StepSkeleton />
                 )}
 
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_cvp_ref" && (
@@ -655,10 +664,9 @@ function AppHeader({ phone, wfId }) {
   );
 }
 
-function ProgressRail({ currentKey, terminated }) {
+const ProgressRail = React.memo(function ProgressRail({ currentKey, terminated }) {
   const idx = terminated ? FLOW.length - 1 : phaseIndex(currentKey);
   const pct = Math.round((idx / (FLOW.length - 1)) * 100);
-  
   return (
     <div className="rail">
       <div className="rail-progress"><div className="rail-progress-fill" style={{ width: `${pct}%` }} /></div>
@@ -676,7 +684,7 @@ function ProgressRail({ currentKey, terminated }) {
       </div>
     </div>
   );
-}
+});
 
 function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLabel, forceFail, retryIteration, retryMax }) {
   return (
@@ -731,6 +739,29 @@ function CvpStep({ productType, onSubmit, loading }) {
     </StepShell>
   );
 }
+
+function Confetti() {
+  const pieces = React.useMemo(() =>
+    Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      delay: Math.random() * 0.4,
+      duration: 2.2 + Math.random() * 1.2,
+      color: ["#0FB8A0", "#EFA23B", "#0A2A4D", "#E5484D"][i % 4],
+      rotate: Math.random() * 360,
+    })), []);
+  return (
+    <div className="confetti-layer">
+      {pieces.map((p) => (
+        <span key={p.id} className="confetti-piece" style={{
+          left: `${p.left}%`, background: p.color,
+          animationDelay: `${p.delay}s`, animationDuration: `${p.duration}s`,
+          transform: `rotate(${p.rotate}deg)`,
+        }} />
+      ))}
+    </div>
+  );
+}
 function ResultScreen({ wf, onRestart, copiedKey, onCopy }) {
   const isEtbRedirect = wf.reasonForIncompletion && wf.reasonForIncompletion.startsWith("ETB_REDIRECT");
   if (isEtbRedirect) {
@@ -747,6 +778,7 @@ function ResultScreen({ wf, onRestart, copiedKey, onCopy }) {
   const title = finalStatus === "SUCCESS" ? "Mở tài khoản thành công!" : finalStatus === "NEED_REVIEW" ? "Hồ sơ đang được xét duyệt" : "Không thể mở tài khoản";
   return (
     <StepShell icon={<Icon size={22} />} eyebrow="Kết quả cuối cùng" title={title}>
+      {finalStatus === "SUCCESS" && <Confetti />}
       <div className={`result-panel result-${tone}`}>
         {wf.output?.accountNumber && (
           <KV label="Số tài khoản" value={wf.output.accountNumber} mono
@@ -858,6 +890,25 @@ function StyleBlock() {
       .spinner{width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);
         border-top-color:#fff;animation:spin .7s linear infinite;}
       @keyframes spin{to{transform:rotate(360deg);}}
+
+      /* skeleton */
+      .skel{background:linear-gradient(90deg,var(--line) 25%,#eef2f8 37%,var(--line) 63%);
+        background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;}
+      @keyframes shimmer{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
+      .skel-icon{width:42px;height:42px;border-radius:12px;margin-bottom:10px;}
+      .skel-line{height:14px;margin-bottom:8px;}
+      .skel-line.w40{width:40%;} .skel-line.w70{width:70%;} .skel-line.w55{width:55%;}
+      .stage.dark .skel{background:linear-gradient(90deg,#1a2c48 25%,#233553 37%,#1a2c48 63%);background-size:400% 100%;}
+      
+      /* confetti */
+      .confetti-layer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
+      .confetti-piece{position:absolute;top:-10px;width:8px;height:14px;border-radius:2px;
+        animation-name:confetti-fall;animation-timing-function:ease-in;animation-fill-mode:forwards;}
+      @keyframes confetti-fall{
+        0%{top:-10px;opacity:1;}
+        100%{top:110%;opacity:0;}
+      }
+      .step-card{position:relative;}
 
       .link-btn{background:none;border:none;color:var(--teal-dk);font-size:12.5px;font-weight:700;cursor:pointer;
         display:flex;align-items:center;gap:5px;padding:6px 0;}
