@@ -1,6 +1,7 @@
 package com.bank.onboarding.config;
 
 import com.bank.onboarding.security.VendorHmacAuthenticationFilter;
+import com.bank.onboarding.security.VendorRateLimitFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
