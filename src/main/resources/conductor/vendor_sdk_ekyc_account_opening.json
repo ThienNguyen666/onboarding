@@ -1077,7 +1077,7 @@
             "inputParameters": {
               "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
               "accountNumber": "${create_ebank_user_ref.output.accountNumber}",
-              "customerId": "${check_customer_by_phone_ref.output.customerId}",
+              "phone": "${collect_phone_number_ref.output.phone}",
               "productType": "${workflow.input.productType}",
               "forceComplianceResult": "${workflow.input.forceComplianceResult}"
             },
@@ -1366,6 +1366,7 @@
         "workflowId": "${workflow.workflowId}",
         "customerId": "${check_customer_by_phone_ref.output.customerId}",
         "phone": "${collect_phone_number_ref.output.phone}",
+        "cccdData": "${workflow.variables.cccdData}",
         "finalStatus": "${process_account_in_conductor_ref.output.status}",
         "ebankUserId": "${create_ebank_user_ref.output.ebankUserId}",
         "accountNumber": "${create_ebank_user_ref.output.accountNumber}",

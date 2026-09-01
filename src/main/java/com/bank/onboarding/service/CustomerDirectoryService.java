@@ -7,6 +7,8 @@ import com.bank.onboarding.repository.CustomerRecordRepository;
 import com.bank.onboarding.util.Masking;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +45,19 @@ public class CustomerDirectoryService {
         return "NTB-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 
+    @Transactional
+    public void registerAsEtbIfAbsent(String customerId, String phone, String fullName) {
+        if (phone == null || customerRecordRepository.findByPhone(phone).isPresent()) {
+            return; // đã ETB rồi hoặc thiếu phone -> bỏ qua
+        }
+        try {
+            customerRecordRepository.save(new CustomerRecord(customerId, phone, fullName));
+            log.info("Customer {} (phone={}) chuyển NTB -> ETB sau khi mở TK SUCCESS", customerId, Masking.phone(phone));
+        } catch (DataIntegrityViolationException e) {
+            log.debug("registerAsEtbIfAbsent race-condition, bỏ qua phone={}", Masking.phone(phone));
+        }
+    }
+    
     public void markDropoff(String phone, String sessionId, String resumeStep) {
         redisTemplate.opsForValue().set(
                 dropoffKey(phone),

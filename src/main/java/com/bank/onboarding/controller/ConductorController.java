@@ -37,6 +37,11 @@ public class ConductorController {
             return workflowService.status(workflowId);
       }
 
+      @PostMapping("/{workflowId}/otp/resend")
+      public Map<String, Object> resendOtp(@PathVariable String workflowId) {
+            return taskSignalService.resendOtp(workflowId);
+      }
+      
       @PostMapping("/{workflowId}/dropoff")
       public ResponseEntity<Void> dropoff(@PathVariable String workflowId) {
             workflowService.dropoff(workflowId);

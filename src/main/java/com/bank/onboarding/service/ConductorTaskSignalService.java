@@ -74,6 +74,7 @@ public class ConductorTaskSignalService {
         return result.getOutputData();
     }
 
+    
     private Map<String, Object> verifyOtp(Workflow workflow, TaskSignalRequest req) {
         String phone = String.valueOf(workflow.getInput().get("phone"));
         String otpKey = OtpService.workflowSessionKey(phone);
@@ -89,6 +90,17 @@ public class ConductorTaskSignalService {
             customerDirectoryService.clearDropoff(phone);
         }
         return Map.of("verified", verified);
+    }
+    public Map<String, Object> resendOtp(String workflowId) {
+        Workflow workflow = workflowClient.getWorkflow(workflowId, true);
+        Task pending = findInProgressTask(workflow, "verify_otp_ref");
+        if (pending == null) {
+            throw OnboardingException.badState("Workflow hiện không ở bước chờ nhập OTP, không thể gửi lại");
+        }
+        String phone = String.valueOf(workflow.getInput().get("phone"));
+        otpService.generateAndStore(OtpService.workflowSessionKey(phone));
+        log.info("OTP resent workflowId={}", workflowId);
+        return Map.of("resent", true);
     }
 
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {

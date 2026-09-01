@@ -183,9 +183,9 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> showResultToCustomer() { return Map.of("shown", true); }
 
       @WorkerTask("process_account_in_conductor")
-      public Map<String, Object> processAccountInConductor(@InputParam("customerId") String customerId,
+      public Map<String, Object> processAccountInConductor(@InputParam("phone") String phone,
                                                             @InputParam("forceComplianceResult") String forceComplianceResult) {
-            ComplianceStatus status = complianceMockService.decide(customerId, forceComplianceResult);
+            ComplianceStatus status = complianceMockService.decide(phone, forceComplianceResult);
             String reason = complianceMockService.failureReasonFor(status);
             return reason == null ? Map.of("status", status.name()) : Map.of("status", status.name(), "failureReason", reason);
       }
@@ -244,7 +244,9 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> auditLogFinalResult(
             @InputParam("workflowId") String workflowId, @InputParam("finalStatus") String finalStatus,
             @InputParam("ebankUserId") String ebankUserId, @InputParam("accountNumber") String accountNumber,
-            @InputParam("failureReason") String failureReason) 
+            @InputParam("failureReason") String failureReason,
+            @InputParam("customerId") String customerId, @InputParam("phone") String phone,
+            @InputParam("cccdData") Map<String, Object> cccdData)
       {
             sessionRepository.findByWorkflowId(workflowId).ifPresent(session -> {
                   session.setLastKnownStatus(finalStatus);
@@ -255,6 +257,13 @@ public class OnboardingConductorWorkers {
                   "ebankUserId", String.valueOf(ebankUserId),
                   "accountNumber", String.valueOf(accountNumber),
                   "failureReason", failureReason == null ? "" : failureReason)));
+
+            // FIX: KH mở TK SUCCESS xong vẫn còn NTB trong customer_record -> test lại cùng SĐT
+            // lần sau bị coi là NTB mới toanh (mất nhánh ETB). Convert ngay khi SUCCESS.
+            if ("SUCCESS".equals(finalStatus) && phone != null && customerId != null) {
+                  String fullName = cccdData != null ? String.valueOf(cccdData.getOrDefault("fullName", "")) : "";
+                  customerDirectoryService.registerAsEtbIfAbsent(customerId, phone, fullName);
+            }
             log.info("[AUDIT] workflowId={} finalStatus={}", workflowId, finalStatus);
             return Map.of("logged", true);
       }

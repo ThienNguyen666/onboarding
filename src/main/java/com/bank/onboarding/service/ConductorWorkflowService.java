@@ -18,9 +18,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
+import java.util.Optional;
 
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -36,6 +38,11 @@ public class ConductorWorkflowService {
       @CircuitBreaker(name = "orkes", fallbackMethod = "startFallback")
       @Retry(name = "orkes")
       public String start(StartOnboardingRequest req) {
+      Optional<String> active = findActiveWorkflowForPhone(req.phone());
+      if (active.isPresent()) {
+            log.info("Phone {} đã có workflow đang chạy -> tái sử dụng thay vì tạo mới", req.vendorId());
+            return active.get();
+      }
             String forceCompliance = req.forceComplianceResult();
             if (forceCompliance != null && !onboardingProperties.otp().debugEndpointEnabled()) {
                   log.warn("forceComplianceResult bị bỏ qua vì debug endpoint đang tắt (vendorId={})", req.vendorId());
@@ -100,5 +107,19 @@ public class ConductorWorkflowService {
       private WorkflowStatusResponse statusFallback(String workflowId, Throwable t) {
             log.error("Orkes gián đoạn khi lấy status workflowId={}", workflowId, t);
             throw OnboardingException.badState("Không lấy được trạng thái phiên, vui lòng thử lại sau ít phút");
+      }
+
+      private Optional<String> findActiveWorkflowForPhone(String phone) {
+            return sessionRepository.findTopByPhoneOrderByCreatedAtDesc(phone)
+                  .flatMap(session -> {
+                        try {
+                              Workflow wf = workflowClient.getWorkflow(session.getWorkflowId(), false);
+                              boolean running = wf.getStatus() == Workflow.WorkflowStatus.RUNNING
+                                    || wf.getStatus() == Workflow.WorkflowStatus.PAUSED;
+                              return running ? Optional.of(session.getWorkflowId()) : Optional.<String>empty();
+                        } catch (Exception e) {
+                              return Optional.empty();
+                        }
+                  });
       }
 }
