@@ -308,6 +308,13 @@ export default function App() {
       setOtpValue(res.otp);
     });
 
+  const doResendOtp = () =>
+    run(async () => {
+      await api(baseUrl, `/api/conductor/${wfId}/otp/resend`, "POST");
+      setOtpDebug(null);
+      setOtpValue("");
+    });
+
   const doDropoff = () =>
     run(async () => {
       await api(baseUrl, `/api/conductor/${wfId}/dropoff`, "POST");
@@ -465,6 +472,9 @@ export default function App() {
                     <button className="link-btn" onClick={doPeekOtp} disabled={loading}>
                       <Eye size={13} /> Xem OTP (debug)
                     </button>
+                    <button className="link-btn" onClick={doResendOtp} disabled={loading}>
+                      <RefreshCw size={13} /> Gửi lại OTP
+                    </button>
                   </StepShell>
                 )}
 
@@ -554,6 +564,10 @@ export default function App() {
                   <Eye size={14} /> Xem OTP hiện tại (debug endpoint)
                 </button>
 
+                <button className="dev-btn" onClick={doResendOtp} disabled={!wfId || loading}>
+                  <RefreshCw size={14} /> Gửi lại OTP (sinh mã mới)
+                </button>
+
                 <button className="dev-btn" onClick={doDropoff} disabled={!wfId || loading}>
                   <LogOut size={14} /> Giả lập thoát app (dropoff)
                 </button>
@@ -565,8 +579,7 @@ export default function App() {
                       {copiedKey === "otp" ? <Check size={12} /> : <Copy size={12} />}
                     </button>
                     <span className="hint">
-                      {otpCountdown > 0 ? `hết hạn sau ${otpCountdown}s` : "đã hết hạn — bấm Xem OTP để lấy mã mới"}
-                    </span>
+                      {otpCountdown > 0 ? `hết hạn sau ${otpCountdown}s` : "đã hết hạn — bấm Gửi lại OTP để lấy mã mới"}                    </span>
                   </div>
                 )}
               </div>

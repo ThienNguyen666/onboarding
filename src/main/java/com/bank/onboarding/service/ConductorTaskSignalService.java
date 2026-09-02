@@ -40,7 +40,6 @@ public class ConductorTaskSignalService {
 
     public Map<String, Object> completeTask(String workflowId, String taskRefName, TaskSignalRequest rawReq) {
         TaskSignalRequest req = guardForceFail(rawReq);
-        Workflow workflow = workflowClient.getWorkflow(workflowId, true);        
         Task task = findInProgressTaskWithRetry(workflowId, taskRefName);
 
         TaskResult result = new TaskResult();
@@ -64,8 +63,8 @@ public class ConductorTaskSignalService {
                     result.setOutputData(Map.of(
                             "nfcData", mockEkycService.mockNfcData(req.outputData()),
                             "forceFail", req.forceFail()));
-            case "verify_otp_ref" -> result.setOutputData(verifyOtp(workflow, req));
-            default -> throw OnboardingException.badRequest(
+            case "verify_otp_ref" -> result.setOutputData(verifyOtp(workflowClient.getWorkflow(workflowId, true), req));
+                default -> throw OnboardingException.badRequest(
                     "Task '" + taskRefName + "' không hỗ trợ complete thủ công");
         }
 
