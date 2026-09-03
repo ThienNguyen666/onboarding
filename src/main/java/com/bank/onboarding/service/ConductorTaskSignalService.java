@@ -4,6 +4,7 @@ import com.bank.onboarding.dto.TaskSignalRequest;
 import com.bank.onboarding.exception.OnboardingException;
 import com.bank.onboarding.config.OnboardingProperties;
 import com.bank.onboarding.repository.OnboardingSessionRepository;
+import com.bank.onboarding.util.WorkflowInputs;
 
 import com.netflix.conductor.client.http.TaskClient;
 import com.netflix.conductor.client.http.WorkflowClient;
@@ -81,7 +82,7 @@ public class ConductorTaskSignalService {
 
     
     private Map<String, Object> verifyOtp(Workflow workflow, TaskSignalRequest req) {
-        String phone = String.valueOf(workflow.getInput().get("phone"));
+        String phone = WorkflowInputs.phoneOf(workflow);        
         String otpKey = OtpService.workflowSessionKey(phone);
         Object otpValue = req.outputData() == null ? null : req.outputData().get("otp");
         boolean verified;
@@ -102,7 +103,7 @@ public class ConductorTaskSignalService {
         if (pending == null) {
             throw OnboardingException.badState("Workflow hiện không ở bước chờ nhập OTP, không thể gửi lại");
         }
-        String phone = String.valueOf(workflow.getInput().get("phone"));
+        String phone = WorkflowInputs.phoneOf(workflow);        
         otpService.generateAndStore(OtpService.workflowSessionKey(phone));
         log.info("OTP resent workflowId={}", workflowId);
         return Map.of("resent", true);

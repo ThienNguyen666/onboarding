@@ -7,6 +7,7 @@ import com.bank.onboarding.entity.OnboardingSession;
 import com.bank.onboarding.exception.OnboardingException;
 import com.bank.onboarding.repository.OnboardingSessionRepository;
 import com.bank.onboarding.dto.StartOnboardingRequest;
+import com.bank.onboarding.util.WorkflowInputs;
 
 import com.netflix.conductor.client.http.WorkflowClient;
 import com.netflix.conductor.common.metadata.workflow.StartWorkflowRequest;
@@ -78,12 +79,12 @@ public class ConductorWorkflowService {
       @Retry(name = "orkes")  
       public void dropoff(String workflowId) {
             Workflow workflow = workflowClient.getWorkflow(workflowId, true);
-            Object phoneRaw = workflow.getInput() == null ? null : workflow.getInput().get("phone");
-            if (phoneRaw == null) {
+            String phone = WorkflowInputs.phoneOf(workflow);            
+            if (phone == null) {
                   return; // chưa nhập SĐT thì không có gì để resume
             }
             String resumeStep = statusMapper.toResponse(workflow).currentTaskRef();
-            customerDirectoryService.markDropoff(String.valueOf(phoneRaw), workflowId,
+            customerDirectoryService.markDropoff(phone, workflowId,
                   resumeStep == null ? "UNKNOWN" : resumeStep);
       }
 

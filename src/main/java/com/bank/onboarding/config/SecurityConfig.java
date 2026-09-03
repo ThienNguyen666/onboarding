@@ -20,7 +20,7 @@ public class SecurityConfig {
       private final VendorHmacAuthenticationFilter vendorHmacAuthenticationFilter;
       private final VendorRateLimitFilter vendorRateLimitFilter;
 
-      // FIX: cùng property key với filter — 2 nơi phải đồng bộ, trước đây SecurityConfig
+      // cùng property key với filter — 2 nơi phải đồng bộ, trước đây SecurityConfig
       // "hardcode" hasRole(VENDOR) bất kể cờ này, gây 403 khi security.enabled=false.
       @Value("${app.onboarding.security.enabled:true}")
       private boolean securityEnabled;
@@ -31,15 +31,12 @@ public class SecurityConfig {
                   .csrf(csrf -> csrf.disable())
                   .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                   .authorizeHttpRequests(auth -> {
-                        auth.requestMatchers("/", "/*.html", "/*.jsx",
+                        auth.requestMatchers("/", "/*.html", "/*.jsx","/*.ico",
                                           "/actuator/health/**", "/docs/**", "/v3/api-docs/**").permitAll()
-                            .requestMatchers("/api/onboarding/debug/**").permitAll();
-
+                            .requestMatchers("/api/onboarding/debug/**").permitAll();                        
                         if (securityEnabled) {
                               auth.requestMatchers("/api/conductor/**").hasRole("VENDOR");
-                        } else {
-                              // Dev/local: filter HMAC đã bị skip -> không có Authentication nào được set,
-                              // nên endpoint phải permitAll tương ứng, nếu không mọi request rơi vào anonymous -> 403.
+                        } else {.
                               auth.requestMatchers("/api/conductor/**").permitAll();
                         }
                         auth.anyRequest().denyAll();
