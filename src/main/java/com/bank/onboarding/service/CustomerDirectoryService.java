@@ -22,7 +22,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CustomerDirectoryService {
 
-    /** Thay cho String[2] không type-safe trước đây. */
     public record DropoffInfo(String sdkSessionId, String resumeStep) {}
 
     private final CustomerRecordRepository customerRecordRepository;

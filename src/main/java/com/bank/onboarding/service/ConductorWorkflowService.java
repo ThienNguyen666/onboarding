@@ -90,7 +90,6 @@ public class ConductorWorkflowService {
 
       private void dropoffFallback(String workflowId, Throwable t) {
             log.error("Orkes gián đoạn khi mark dropoff workflowId={}", workflowId, t);
-            // không throw — dropoff chỉ là optimization UX, fail âm thầm là chấp nhận được
       }
       @CircuitBreaker(name = "orkes", fallbackMethod = "statusFallback")
       @Retry(name = "orkes")
