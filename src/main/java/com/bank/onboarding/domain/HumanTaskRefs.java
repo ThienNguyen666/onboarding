@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Danh sách 6 human-task ref (asyncComplete=true) — dùng chung giữa WorkflowStatusMapper,
+ * Danh sách các human-task ref (asyncComplete=true) — dùng chung giữa WorkflowStatusMapper,
  * ConductorController (/meta) và FE (fetch qua API thay vì hardcode trùng lặp).
  */
 public final class HumanTaskRefs {

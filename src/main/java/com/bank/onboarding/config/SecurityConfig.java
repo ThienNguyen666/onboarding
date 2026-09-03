@@ -36,7 +36,7 @@ public class SecurityConfig {
                             .requestMatchers("/api/onboarding/debug/**").permitAll();                        
                         if (securityEnabled) {
                               auth.requestMatchers("/api/conductor/**").hasRole("VENDOR");
-                        } else {.
+                        } else {
                               auth.requestMatchers("/api/conductor/**").permitAll();
                         }
                         auth.anyRequest().denyAll();

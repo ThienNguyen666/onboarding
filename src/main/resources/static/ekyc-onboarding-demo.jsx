@@ -480,7 +480,7 @@ export default function App() {
                     <div className="kv-card">
                       <KV label="Họ tên" value="NGUYEN VAN A" />
                       <KV label="Số CCCD" value="079099001234" mono />
-                      <KV label="Địa chỉ" value="123 Nguyễn Trãi, Q1, TP.HCM" />
+                      <KV label="Địa chỉ" value="Hai Ba Trung, Phuong Sai Gon, TP.HCM" />
                     </div>
                     <PrimaryButton onClick={() => doCompleteTask("show_identity_confirmation_ref")} loading={loading}>
                       Thông tin chính xác
