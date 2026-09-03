@@ -12,7 +12,7 @@ public record StartOnboardingRequest(
       @NotBlank String sdkSessionId,
       @NotBlank String productType,
       @NotNull @Valid DeviceInfo deviceInfo,
-      @NotBlank @Pattern(regexp = "^0\\d{9}$", message = "phone phải là SĐT VN 10 số, bắt đầu bằng 0")
+      @Pattern(regexp = "^0\\d{9}$", message = "phone phải là SĐT VN 10 số, bắt đầu bằng 0")
       String phone,
       @NotBlank String vendorId,
       /** QA/demo override — sẽ bị bỏ qua nếu debug-endpoint-enabled=false (guard ở service). */

@@ -124,8 +124,7 @@
       "name": "collect_phone_number",
       "taskReferenceName": "collect_phone_number_ref",
       "inputParameters": {
-        "prompt": "Nhập số điện thoại",
-        "phone": "${workflow.input.phone}"
+        "prompt": "Nhập số điện thoại"
       },
       "type": "SIMPLE",
       "decisionCases": {},
@@ -135,7 +134,7 @@
       "joinOn": [],
       "optional": false,
       "defaultExclusiveJoinTask": [],
-      "asyncComplete": false,
+      "asyncComplete": true,
       "loopOver": [],
       "onStateChange": {},
       "permissive": false,
@@ -1395,7 +1394,6 @@
     "sdkSessionId",
     "productType",
     "deviceInfo",
-    "phone",
     "otp",
     "vendorId",
     "maxOcrRetries",

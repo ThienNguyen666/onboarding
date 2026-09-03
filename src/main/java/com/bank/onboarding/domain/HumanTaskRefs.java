@@ -10,7 +10,7 @@ import java.util.Set;
 public final class HumanTaskRefs {
 
       public static final Set<String> REFS = Set.of(
-                  "show_cvp_ref",
+                  "show_cvp_ref", "collect_phone_number_ref",
                   "loop_perform_ocr_ref", "loop_perform_liveness_ref",
                   "loop_perform_nfc_ref", "verify_otp_ref",
                   "show_identity_confirmation_ref", "show_tnc_screen_ref");

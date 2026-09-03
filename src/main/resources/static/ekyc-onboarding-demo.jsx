@@ -1,11 +1,38 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  Settings2, X, RefreshCw, Trash2, ChevronRight,
-  ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
-  CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut, Copy, Moon, Sun,
-  Gift, Percent, Zap, CreditCard, Sparkles
+  BatteryFull,
+  Camera,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  Copy,
+  CreditCard,
+  Eye,
+  FileText,
+  Gift,
+  KeyRound,
+  ListTree,
+  LogOut,
+  Moon,
+  Percent,
+  PlugZap,
+  Radio,
+  RefreshCw,
+  ScanFace,
+  Settings2,
+  ShieldCheck,
+  SignalHigh,
+  Smartphone,
+  Sparkles,
+  Sun,
+  Trash2,
+  TriangleAlert,
+  Wifi,
+  X,
+  Zap
 } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 /* ------------------------------------------------------------------ */
@@ -185,7 +212,7 @@ export default function App() {
     deviceModel: "Pixel 8 Pro",
     osVersion: "Android 15",
     nfcSupported: true,
-    phone: "0909" + String(Math.floor(100000 + Math.random() * 900000)),
+    phone: "",
   });
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -270,7 +297,6 @@ export default function App() {
         sdkSessionId: form.sdkSessionId,
         productType: form.productType,
         deviceInfo: { model: form.deviceModel, osVersion: form.osVersion, nfcSupported: form.nfcSupported },
-        phone: form.phone,
         vendorId: form.vendorId,
         forceComplianceResult: forceCompliance || null,
       });
@@ -282,6 +308,7 @@ export default function App() {
       taskSinceRef.current = Date.now();
       lastRefRef.current = null;
       setTaskStalled(false);
+      setF("phone", "");
     });
 
   function taskRefToForceFailKey(ref) {
@@ -293,11 +320,15 @@ export default function App() {
 
   const doCompleteTask = (taskRef) =>
     run(async () => {
-      const body =
-        taskRef === "verify_otp_ref"
-          ? { forceFail: false, outputData: { otp: otpValue } }
-          : { forceFail: !!forceFail[taskRefToForceFailKey(taskRef)], outputData: null };
-      await api(baseUrl, `/api/conductor/${wfId}/tasks/${taskRef}/complete`, "POST", body);
+    const body =
+      taskRef === "verify_otp_ref"
+        ? { forceFail: false, outputData: { otp: otpValue } }
+        : taskRef === "collect_phone_number_ref"
+        ? { forceFail: false, outputData: { phone: form.phone } }
+        : { forceFail: !!forceFail[taskRefToForceFailKey(taskRef)], outputData: null };
+
+       await api(baseUrl, `/api/conductor/${wfId}/tasks/${taskRef}/complete`, "POST", body);
+      
       await pollStatus();
     });
 
@@ -390,10 +421,6 @@ export default function App() {
                         <option value="TKTT_DEBIT">TKTT + Thẻ Debit</option>
                       </select>
                     </Field>
-                    <Field label="Số điện thoại">
-                      <input className="mono" value={form.phone} onChange={(e) => setF("phone", e.target.value)} />
-                    </Field>
-                    <p className="hint">Số 0901111111 / 0902222222 → demo nhánh khách hàng hiện hữu (ETB).</p>
                     <PrimaryButton onClick={doStart} loading={loading}>
                       Mở tài khoản ngay <ChevronRight size={16} />
                     </PrimaryButton>
@@ -409,6 +436,21 @@ export default function App() {
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_cvp_ref" && (
                   <CvpStep productType={form.productType}
                           onSubmit={() => doCompleteTask("show_cvp_ref")} loading={loading} />
+                )}
+                
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "collect_phone_number_ref" && (
+                  <StepShell icon={<Smartphone size={22} />} eyebrow="Phase 2 · Số điện thoại" title="Nhập số điện thoại"
+                            subtitle="Dùng để định danh khách hàng và gửi OTP xác thực.">
+                    <Field label="Số điện thoại">
+                      <input className="mono" value={form.phone}
+                            onChange={(e) => setF("phone", e.target.value)} placeholder="0909xxxxxx" />
+                    </Field>
+                    <p className="hint">Số 0901111111 / 0902222222 → demo nhánh khách hàng hiện hữu (ETB).</p>
+                    <PrimaryButton onClick={() => doCompleteTask("collect_phone_number_ref")} loading={loading}
+                                  disabled={!/^0\d{9}$/.test(form.phone)}>
+                      Tiếp tục <ChevronRight size={16} />
+                    </PrimaryButton>
+                  </StepShell>
                 )}
 
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_ocr_ref" && (

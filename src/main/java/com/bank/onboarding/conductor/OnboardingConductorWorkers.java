@@ -58,10 +58,10 @@ public class OnboardingConductorWorkers {
 
       // ---------------- Phase 2 ----------------
       @WorkerTask("collect_phone_number")
-      public Map<String, Object> collectPhoneNumber(@InputParam("phone") String phone) {
-            return Map.of("phone", phone);
+      public Map<String, Object> collectPhoneNumber() {
+            return Map.of("awaitingCustomerAction", true);
       }
-
+      
       @WorkerTask("check_customer_by_phone")
       public Map<String, Object> checkCustomerByPhone(@InputParam("phone") String phone) {
             CustomerType type = customerDirectoryService.lookupType(phone);

@@ -3,6 +3,7 @@ package com.bank.onboarding.service;
 import com.bank.onboarding.dto.TaskSignalRequest;
 import com.bank.onboarding.exception.OnboardingException;
 import com.bank.onboarding.config.OnboardingProperties;
+import com.bank.onboarding.repository.OnboardingSessionRepository;
 
 import com.netflix.conductor.client.http.TaskClient;
 import com.netflix.conductor.client.http.WorkflowClient;
@@ -16,9 +17,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * Cầu nối cho 6 task asyncComplete=true trong Orkes — 
+ * Cầu nối cho các task asyncComplete=true trong Orkes — 
  * worker chỉ "pickup", kết quả thật do FE gửi lên
  * đây rồi backend gọi TaskClient.updateTask() để Conductor engine đi tiếp.
  */
@@ -32,8 +34,11 @@ public class ConductorTaskSignalService {
     private final MockEkycService mockEkycService;
     private final OtpService otpService;
     private final CustomerDirectoryService customerDirectoryService;
+    private final OnboardingSessionRepository sessionRepository;
     private final OnboardingProperties onboardingProperties;
 
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^0\\d{9}$");
+    
     private static final Set<Task.Status> COMPLETABLE_STATUSES =
             Set.of(Task.Status.IN_PROGRESS, Task.Status.SCHEDULED);
     
@@ -49,6 +54,7 @@ public class ConductorTaskSignalService {
 
         switch (taskRefName) {
             case "show_cvp_ref" -> result.setOutputData(Map.of("consented", true));
+            case "collect_phone_number_ref" -> result.setOutputData(collectPhone(workflowId, req));
             case "show_identity_confirmation_ref" -> result.setOutputData(Map.of("confirmed", true));
             case "show_tnc_screen_ref" -> result.setOutputData(Map.of("tncAccepted", true));
             case "loop_perform_ocr_ref" ->
@@ -100,6 +106,19 @@ public class ConductorTaskSignalService {
         otpService.generateAndStore(OtpService.workflowSessionKey(phone));
         log.info("OTP resent workflowId={}", workflowId);
         return Map.of("resent", true);
+    }
+
+    private Map<String, Object> collectPhone(String workflowId, TaskSignalRequest req) {
+        Object raw = req.outputData() == null ? null : req.outputData().get("phone");
+        String phone = raw == null ? null : String.valueOf(raw).trim();
+        if (phone == null || !PHONE_PATTERN.matcher(phone).matches()) {
+            throw OnboardingException.badRequest("phone phải là SĐT VN 10 số, bắt đầu bằng 0");
+        }
+        sessionRepository.findByWorkflowId(workflowId).ifPresent(s -> {
+            s.setPhone(phone);
+            sessionRepository.save(s);
+        });
+        return Map.of("phone", phone);
     }
 
     private Task findInProgressTaskWithRetry(String workflowId, String taskRefName) {
