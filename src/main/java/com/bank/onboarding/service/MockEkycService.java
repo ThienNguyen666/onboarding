@@ -56,7 +56,6 @@ public class MockEkycService {
         return data;
     }
 
-    /** FIX: trước đây NPE thẳng nếu cccdData null (chưa OCR xong) — nay báo lỗi nghiệp vụ rõ ràng. */
     public int ageFromCccd(Map<String, Object> cccdData) {
         if (cccdData == null || cccdData.get("dob") == null) {
             throw OnboardingException.badState("Chưa có dữ liệu CCCD (OCR chưa hoàn tất) để xác định tuổi");

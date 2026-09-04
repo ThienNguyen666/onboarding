@@ -3,8 +3,11 @@ package com.bank.onboarding.conductor;
 import com.bank.onboarding.config.ConductorProperties;
 import com.netflix.conductor.client.http.TaskClient;
 import com.netflix.conductor.client.http.WorkflowClient;
+import com.netflix.conductor.client.http.MetadataClient;
+
 import io.orkes.conductor.client.ApiClient;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -43,7 +46,7 @@ public class ConductorClientConfig {
       
       @Bean
       @Lazy
-      public com.netflix.conductor.client.http.MetadataClient metadataClient(ApiClient apiClient) {
-            return new com.netflix.conductor.client.http.MetadataClient(apiClient);
+      public MetadataClient metadataClient(ApiClient apiClient) {
+            return new MetadataClient(apiClient);
       }
 }

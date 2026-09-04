@@ -9,9 +9,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Sau khi chuyển state machine sang Orkes Conductor, entity này KHÔNG còn giữ
- * phase/retry-count/otpVerified... — Orkes workflow instance là nguồn sự thật
- * duy nhất cho state (query qua WorkflowClient.getWorkflow()). Entity chỉ còn
+ * Orkes workflow instance là nguồn sự thật duy nhất cho state 
+ * (query qua WorkflowClient.getWorkflow()). Entity chỉ còn
  * vai trò bảng mapping mỏng phone -> workflowId mới nhất, phục vụ:
  *  - FE tra lại workflowId khi mất (refresh trang / đổi thiết bị)
  *  - check_dropoff worker tìm workflow cũ theo phone

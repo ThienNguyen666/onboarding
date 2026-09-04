@@ -2,7 +2,7 @@
   "createTime": 1787800736970,
   "updateTime": 1787796449012,
   "name": "vendor_sdk_ekyc_account_opening",
-  "description": "Luồng mở tài khoản eKYC qua SDK (App mobile bank): Phase 0 khởi tạo SDK + AccessToken -> Phase 1 kiểm tra thiết bị/NFC -> Phase 2 xác định KH NTB/ETB + Dropoff -> Phase 3 OCR CCCD (retry) -> Phase 4 Liveness (retry) -> Phase 5 NFC (retry) -> Phase 6 định danh + TnC + OTP -> Phase 7 tạo tài khoản + xử lý compliance (SUCCESS/NEED_REVIEW/FAILED). v4: 4 task human-interaction (perform_ocr_cccd, perform_liveness, perform_nfc, verify_otp) chuyển sang asyncComplete=true — worker chỉ khởi tạo task, FE gọi TaskClient.updateTask() qua /api/conductor/{workflowId}/tasks/{taskRef}/complete khi KH thao tác xong.",
+  "description": "Luồng mở tài khoản eKYC qua SDK (App mobile bank)",
   "version": 4,
   "tasks": [
     {

@@ -28,7 +28,9 @@ public class CustomerDirectoryService {
     private final StringRedisTemplate redisTemplate;
     private final OnboardingProperties properties;
 
-    private String dropoffKey(String phone) { return "onboarding:dropoff:" + phone; }
+    private String dropoffKey(String phone) { 
+        return "onboarding:dropoff:" + phone; 
+    }
 
     @Transactional(readOnly = true)
     public CustomerType lookupType(String phone) {

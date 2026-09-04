@@ -94,7 +94,9 @@ public class OnboardingConductorWorkers {
 
       // ---------------- Phase 3/4/5: OCR / Liveness / NFC retry-loop ----------------
       @WorkerTask("show_ocr_guide")
-      public Map<String, Object> showOcrGuide() { return Map.of("shown", true); }
+      public Map<String, Object> showOcrGuide() { 
+            return Map.of("shown", true); 
+      }
 
       @WorkerTask("perform_ocr_cccd")
       public Map<String, Object> performOcrCccd() {
@@ -110,7 +112,9 @@ public class OnboardingConductorWorkers {
       }
 
       @WorkerTask("show_liveness_guide")
-      public Map<String, Object> showLivenessGuide() { return Map.of("shown", true); }
+      public Map<String, Object> showLivenessGuide() {
+            return Map.of("shown", true); 
+      }
 
       @WorkerTask("perform_liveness")
       public Map<String, Object> performLiveness() {
@@ -126,7 +130,9 @@ public class OnboardingConductorWorkers {
       }
 
       @WorkerTask("show_nfc_guide")
-      public Map<String, Object> showNfcGuide() { return Map.of("shown", true); }
+      public Map<String, Object> showNfcGuide() { 
+            return Map.of("shown", true); 
+      }
 
       @WorkerTask("perform_nfc")
       public Map<String, Object> performNfc() {
@@ -258,8 +264,6 @@ public class OnboardingConductorWorkers {
                   "accountNumber", String.valueOf(accountNumber),
                   "failureReason", failureReason == null ? "" : failureReason)));
 
-            // FIX: KH mở TK SUCCESS xong vẫn còn NTB trong customer_record -> test lại cùng SĐT
-            // lần sau bị coi là NTB mới toanh (mất nhánh ETB). Convert ngay khi SUCCESS.
             if ("SUCCESS".equals(finalStatus) && phone != null && customerId != null) {
                   String fullName = cccdData != null ? String.valueOf(cccdData.getOrDefault("fullName", "")) : "";
                   customerDirectoryService.registerAsEtbIfAbsent(customerId, phone, fullName);
