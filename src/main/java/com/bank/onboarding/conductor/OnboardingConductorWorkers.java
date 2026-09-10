@@ -29,6 +29,15 @@ public class OnboardingConductorWorkers {
       private final OnboardingSessionRepository sessionRepository;
       private final AuditLogRepository auditLogRepository;
 
+      private Map<String, Object> notifyVendor(String vendorId, String refId, String status, String reason) {
+            notificationMockService.notifyVendor(vendorId, refId, status, reason);
+            return Map.of("notified", true);
+      }
+
+      private Map<String, Object> sendOtt(String customerId, String templateId) {
+            notificationMockService.sendOtt(customerId, customerId, templateId);
+            return Map.of("sent", true);
+      }
       // ---------------- Phase 0 ----------------
       @WorkerTask("get_vendor_access_token")
       public Map<String, Object> getVendorAccessToken() {
@@ -37,7 +46,7 @@ public class OnboardingConductorWorkers {
 
       @WorkerTask("show_cvp_and_confirm_consent")
       public Map<String, Object> showCvpAndConfirmConsent() {
-            return Map.of("consented", true);
+            return Map.of("awaitingCustomerAction", true);
       }
 
       // ---------------- Phase 1 ----------------
@@ -49,10 +58,10 @@ public class OnboardingConductorWorkers {
 
       // ---------------- Phase 2 ----------------
       @WorkerTask("collect_phone_number")
-      public Map<String, Object> collectPhoneNumber(@InputParam("phone") String phone) {
-            return Map.of("phone", phone);
+      public Map<String, Object> collectPhoneNumber() {
+            return Map.of("awaitingCustomerAction", true);
       }
-
+      
       @WorkerTask("check_customer_by_phone")
       public Map<String, Object> checkCustomerByPhone(@InputParam("phone") String phone) {
             CustomerType type = customerDirectoryService.lookupType(phone);
@@ -85,7 +94,9 @@ public class OnboardingConductorWorkers {
 
       // ---------------- Phase 3/4/5: OCR / Liveness / NFC retry-loop ----------------
       @WorkerTask("show_ocr_guide")
-      public Map<String, Object> showOcrGuide() { return Map.of("shown", true); }
+      public Map<String, Object> showOcrGuide() { 
+            return Map.of("shown", true); 
+      }
 
       @WorkerTask("perform_ocr_cccd")
       public Map<String, Object> performOcrCccd() {
@@ -101,7 +112,9 @@ public class OnboardingConductorWorkers {
       }
 
       @WorkerTask("show_liveness_guide")
-      public Map<String, Object> showLivenessGuide() { return Map.of("shown", true); }
+      public Map<String, Object> showLivenessGuide() {
+            return Map.of("shown", true); 
+      }
 
       @WorkerTask("perform_liveness")
       public Map<String, Object> performLiveness() {
@@ -117,7 +130,9 @@ public class OnboardingConductorWorkers {
       }
 
       @WorkerTask("show_nfc_guide")
-      public Map<String, Object> showNfcGuide() { return Map.of("shown", true); }
+      public Map<String, Object> showNfcGuide() { 
+            return Map.of("shown", true); 
+      }
 
       @WorkerTask("perform_nfc")
       public Map<String, Object> performNfc() {
@@ -174,9 +189,9 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> showResultToCustomer() { return Map.of("shown", true); }
 
       @WorkerTask("process_account_in_conductor")
-      public Map<String, Object> processAccountInConductor(@InputParam("customerId") String customerId,
+      public Map<String, Object> processAccountInConductor(@InputParam("phone") String phone,
                                                             @InputParam("forceComplianceResult") String forceComplianceResult) {
-            ComplianceStatus status = complianceMockService.decide(customerId, forceComplianceResult);
+            ComplianceStatus status = complianceMockService.decide(phone, forceComplianceResult);
             String reason = complianceMockService.failureReasonFor(status);
             return reason == null ? Map.of("status", status.name()) : Map.of("status", status.name(), "failureReason", reason);
       }
@@ -189,50 +204,43 @@ public class OnboardingConductorWorkers {
       @WorkerTask("notify_vendor_success")
       public Map<String, Object> notifyVendorSuccess(@InputParam("vendorId") String vendorId,
                                                       @InputParam("ebankUserId") String ebankUserId) {
-            notificationMockService.notifyVendor(vendorId, ebankUserId, "SUCCESS", null);
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, ebankUserId, "SUCCESS", null);
       }
 
       @WorkerTask("notify_vendor_need_review")
       public Map<String, Object> notifyVendorNeedReview(@InputParam("vendorId") String vendorId,
                                                             @InputParam("customerId") String customerId) {
-            notificationMockService.notifyVendor(vendorId, customerId, "NEED_REVIEW", null);
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, customerId, "NEED_REVIEW", null);
       }
 
       @WorkerTask("notify_vendor_failed")
       public Map<String, Object> notifyVendorFailed(@InputParam("vendorId") String vendorId,
                                                       @InputParam("customerId") String customerId,
                                                       @InputParam("reason") String reason) {
-            notificationMockService.notifyVendor(vendorId, customerId, "FAILED", reason);
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, customerId, "FAILED", reason);
       }
 
       @WorkerTask("notify_vendor_unknown_error")
       public Map<String, Object> notifyVendorUnknownError(@InputParam("vendorId") String vendorId,
                                                             @InputParam("customerId") String customerId) {
-            notificationMockService.notifyVendor(vendorId, customerId, "FAILED", "Unknown conductor processing result");
-            return Map.of("notified", true);
+            return notifyVendor(vendorId, customerId, "FAILED", "Unknown conductor processing result");
       }
 
       @WorkerTask("send_ott_success")
       public Map<String, Object> sendOttSuccess(@InputParam("customerId") String customerId) {
-            notificationMockService.sendOtt(customerId, customerId, "ACCOUNT_OPEN_SUCCESS");
-            return Map.of("sent", true);
+            return sendOtt(customerId, "ACCOUNT_OPEN_SUCCESS");
       }
 
       @WorkerTask("send_ott_need_review")
       public Map<String, Object> sendOttNeedReview(@InputParam("customerId") String customerId) {
-            notificationMockService.sendOtt(customerId, customerId, "ACCOUNT_PENDING_REVIEW");
-            return Map.of("sent", true);
+            return sendOtt(customerId, "ACCOUNT_PENDING_REVIEW");
       }
 
       @WorkerTask("send_ott_failed")
       public Map<String, Object> sendOttFailed(@InputParam("customerId") String customerId) {
-            notificationMockService.sendOtt(customerId, customerId, "ACCOUNT_OPEN_FAILED");
-            return Map.of("sent", true);
+            return sendOtt(customerId, "ACCOUNT_OPEN_FAILED");
       }
-
+      
       @WorkerTask("cleanup_vendor_sdk_session")
       public Map<String, Object> cleanupVendorSdkSession() {
             return Map.of("cleaned", true);
@@ -242,7 +250,9 @@ public class OnboardingConductorWorkers {
       public Map<String, Object> auditLogFinalResult(
             @InputParam("workflowId") String workflowId, @InputParam("finalStatus") String finalStatus,
             @InputParam("ebankUserId") String ebankUserId, @InputParam("accountNumber") String accountNumber,
-            @InputParam("failureReason") String failureReason) 
+            @InputParam("failureReason") String failureReason,
+            @InputParam("customerId") String customerId, @InputParam("phone") String phone,
+            @InputParam("cccdData") Map<String, Object> cccdData)
       {
             sessionRepository.findByWorkflowId(workflowId).ifPresent(session -> {
                   session.setLastKnownStatus(finalStatus);
@@ -253,6 +263,11 @@ public class OnboardingConductorWorkers {
                   "ebankUserId", String.valueOf(ebankUserId),
                   "accountNumber", String.valueOf(accountNumber),
                   "failureReason", failureReason == null ? "" : failureReason)));
+
+            if ("SUCCESS".equals(finalStatus) && phone != null && customerId != null) {
+                  String fullName = cccdData != null ? String.valueOf(cccdData.getOrDefault("fullName", "")) : "";
+                  customerDirectoryService.registerAsEtbIfAbsent(customerId, phone, fullName);
+            }
             log.info("[AUDIT] workflowId={} finalStatus={}", workflowId, finalStatus);
             return Map.of("logged", true);
       }

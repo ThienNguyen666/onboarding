@@ -4,6 +4,9 @@ import com.bank.onboarding.dto.TaskSignalRequest;
 import com.bank.onboarding.dto.WorkflowStatusResponse;
 import com.bank.onboarding.service.ConductorTaskSignalService;
 import com.bank.onboarding.service.ConductorWorkflowService;
+import com.bank.onboarding.domain.HumanTaskRefs;
+import com.bank.onboarding.dto.StartOnboardingRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.ResponseEntity;
@@ -20,8 +23,13 @@ public class ConductorController {
       private final ConductorTaskSignalService taskSignalService; 
       
       @PostMapping("/start")
-      public Map<String, String> start(@RequestBody Map<String, Object> input) {
-            return Map.of("workflowId", workflowService.start(input));
+      public Map<String, String> start(@Valid @RequestBody StartOnboardingRequest req) {
+            return Map.of("workflowId", workflowService.start(req));
+      }
+
+      @GetMapping("/meta")
+      public Map<String, Object> meta() {
+            return Map.of("humanTaskRefs", HumanTaskRefs.REFS);
       }
 
       @GetMapping("/{workflowId}")
@@ -29,6 +37,11 @@ public class ConductorController {
             return workflowService.status(workflowId);
       }
 
+      @PostMapping("/{workflowId}/otp/resend")
+      public Map<String, Object> resendOtp(@PathVariable String workflowId) {
+            return taskSignalService.resendOtp(workflowId);
+      }
+      
       @PostMapping("/{workflowId}/dropoff")
       public ResponseEntity<Void> dropoff(@PathVariable String workflowId) {
             workflowService.dropoff(workflowId);

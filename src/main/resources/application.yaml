@@ -1,18 +1,34 @@
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   application:
     name: onboarding
+
+  threads:
+    virtual:
+      enabled: true
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:postgres}:5432/onboarding
     username: onboarding
     password: onboarding
     driver-class-name: org.postgresql.Driver
+    connection-fetch: lazy
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:8}
+      minimum-idle: 2
 
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
     show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
 
   data:
     redis:
@@ -21,8 +37,15 @@ spring:
 
 app:
   onboarding:
+    security:
+      enabled: ${VENDOR_AUTH_ENABLED:false}
+    vendors:
+      VENDOR_BANK_APP:
+        api-key: ${VENDOR_BANK_APP_API_KEY:demo-api-key}
+        secret: ${VENDOR_BANK_APP_SECRET:demo-secret}
     cors:
-      allowed-origins: ${ALLOWED_ORIGINS:*}
+      # Mặc định KHÔNG bật CORS (an toàn) — profile dev sẽ mở "*", profile prod bắt buộc set rõ domain.
+      allowed-origins: ${ALLOWED_ORIGINS:}
     retry:
       default-max-ocr-retries: 3
       default-max-liveness-retries: 3
@@ -31,17 +54,14 @@ app:
       length: 6
       ttl-seconds: 300
       max-verify-attempts: 5
-      debug-endpoint-enabled: true
+      # Mặc định TẮT — profile dev bật lại. Không để lộ debug endpoint ra ngoài ý muốn.
+      debug-endpoint-enabled: false
     dropoff:
       ttl-hours: 24
     ekyc-mock:
       always-pass-by-default: true
     compliance-mock:
       strategy: RULE_BASED
-
-logging:
-  level:
-    "[com.bank.onboarding]": DEBUG
 
 conductor:
   server:
@@ -64,6 +84,34 @@ management:
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
 
 server:
   shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,application/javascript,image/svg+xml
+    min-response-size: 1024
+
+springdoc:
+  swagger-ui:
+    path: /docs
+  api-docs:
+    path: /v3/api-docs
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      orkes:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 5
+        register-health-indicator: true
+  retry:
+    instances:
+      orkes:
+        max-attempts: 3
+        wait-duration: 500ms

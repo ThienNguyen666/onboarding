@@ -6,7 +6,9 @@ import com.bank.onboarding.dto.SessionSummary;
 import com.bank.onboarding.exception.OnboardingException;
 import com.bank.onboarding.service.ConductorSessionAdminService;
 import com.bank.onboarding.service.OtpService;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,8 +16,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 /**
  * Endpoint tiện debug: xem OTP hiện tại thay vì phải cắm SMS gateway thật.
  * BẮT BUỘC tắt (app.onboarding.otp.debug-endpoint-enabled=false) trước khi
@@ -32,7 +36,7 @@ public class DebugController {
     private final ConductorSessionAdminService adminService; 
     
     @GetMapping("/sessions")
-    public java.util.List<SessionSummary> listSessions() {
+    public List<SessionSummary> listSessions() {
         guardDebugEnabled();
         return adminService.listRecentSessions();
     }
@@ -48,8 +52,7 @@ public class DebugController {
     @GetMapping("/otp")
     public OtpDebugResponse peekOtp(@RequestParam String phone) {
         if (!properties.otp().debugEndpointEnabled()) {
-                throw new OnboardingException(HttpStatus.FORBIDDEN, "DEBUG_DISABLED",
-                        "Debug OTP endpoint đang tắt");
+            throw new OnboardingException(HttpStatus.FORBIDDEN, "DEBUG_DISABLED", "Debug OTP endpoint đang tắt");
         }
         String key = OtpService.workflowSessionKey(phone);
         String otp = otpService.debugPeek(key);

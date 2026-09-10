@@ -4,10 +4,13 @@ import com.bank.onboarding.dto.SessionSummary;
 import com.bank.onboarding.entity.OnboardingSession;
 import com.bank.onboarding.repository.AuditLogRepository;
 import com.bank.onboarding.repository.OnboardingSessionRepository;
+import com.bank.onboarding.repository.CustomerRecordRepository;
 import com.bank.onboarding.util.Masking;
+
 import com.netflix.conductor.client.http.WorkflowClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +24,7 @@ public class ConductorSessionAdminService {
 
     private final OnboardingSessionRepository sessionRepository;
     private final AuditLogRepository auditLogRepository;
+    private final CustomerRecordRepository customerRecordRepository;
     private final StringRedisTemplate redisTemplate;
     private final WorkflowClient workflowClient;
 
@@ -47,6 +51,7 @@ public class ConductorSessionAdminService {
         }
         auditLogRepository.deleteAllInBatch();
         sessionRepository.deleteAllInBatch();
+        customerRecordRepository.deleteAllInBatch();
         var keys = redisTemplate.keys("onboarding:*");
         if (keys != null && !keys.isEmpty()) redisTemplate.delete(keys);
         log.warn("[DEBUG] Reset toàn bộ session mapping + audit log + Redis onboarding:* + terminate {} workflow(s) trên Orkes Cloud",

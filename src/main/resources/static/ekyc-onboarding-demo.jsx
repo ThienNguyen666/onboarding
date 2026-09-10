@@ -1,10 +1,38 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  Settings2, X, RefreshCw, Trash2, ChevronRight,
-  ShieldCheck, ScanFace, Smartphone, KeyRound, FileText, CircleCheck,
-  CircleX, CircleAlert, Camera, Radio, Wifi, BatteryFull, SignalHigh,
-  Eye, ListTree, PlugZap, Check, TriangleAlert, LogOut
+  BatteryFull,
+  Camera,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  Copy,
+  CreditCard,
+  Eye,
+  FileText,
+  Gift,
+  KeyRound,
+  ListTree,
+  LogOut,
+  Moon,
+  Percent,
+  PlugZap,
+  Radio,
+  RefreshCw,
+  ScanFace,
+  Settings2,
+  ShieldCheck,
+  SignalHigh,
+  Smartphone,
+  Sparkles,
+  Sun,
+  Trash2,
+  TriangleAlert,
+  Wifi,
+  X,
+  Zap
 } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 /* ------------------------------------------------------------------ */
@@ -27,8 +55,8 @@ async function api(baseUrl, path, method = "GET", body) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    const err = new Error((data && data.message) || `HTTP ${res.status}`);
-    err.code = data && data.code;
+    const err = new Error((data && data.detail) || `HTTP ${res.status}`);
+    err.code = data && data.properties && data.properties.code;
     err.status = res.status;
     throw err;
   }
@@ -53,17 +81,6 @@ const FLOW = [
   { key: "DONE", label: "Hoàn tất", lane: "sys" },
 ];
 
-// 6 human-task ref phải khớp CHÍNH XÁC với WorkflowStatusMapper.HUMAN_TASK_REFS (BE)
-// và với asyncComplete=true trong workflow JSON (vendor_sdk_ekyc_account_opening).
-const HUMAN_TASK_REFS = new Set([
-  "loop_perform_ocr_ref",
-  "loop_perform_liveness_ref",
-  "loop_perform_nfc_ref",
-  "show_identity_confirmation_ref",
-  "show_tnc_screen_ref",
-  "verify_otp_ref",
-]);
-
 // Nếu 1 task KHÔNG phải human-task mà đứng RUNNING quá lâu -> nhiều khả năng
 // worker BE không poll được (regression của lỗi classpath-scan trong fat jar).
 const WORKER_STALL_WARNING_MS = 12000;
@@ -76,7 +93,29 @@ function phaseIndex(key) {
 function randomId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
+function copyToClipboard(text, key, setCopiedKey) {
+  if (!text) return;
+  navigator.clipboard?.writeText(String(text)).then(() => {
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
+  });
+}
 
+const KV = React.memo(function KV({ label, value, mono, small, onCopyClick, copied }) {
+  return (
+    <div className="kv-row">
+      <span className="kv-label">{label}</span>
+      <span className={`kv-value ${mono ? "mono" : ""} ${small ? "small" : ""}`}>
+        {value}
+        {onCopyClick && (
+          <button type="button" className="copy-btn" onClick={onCopyClick} title="Sao chép">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+        )}
+      </span>
+    </div>
+  );
+});
 /* ------------------------------------------------------------------ */
 /*  Small UI atoms                                                     */
 /* ------------------------------------------------------------------ */
@@ -125,6 +164,16 @@ function StepShell({ icon, eyebrow, title, subtitle, children }) {
   );
 }
 
+function StepSkeleton() {
+  return (
+    <div className="card step-card skeleton-card">
+      <div className="skel skel-icon" />
+      <div className="skel skel-line w40" />
+      <div className="skel skel-line w70" />
+      <div className="skel skel-line w55" />
+    </div>
+  );
+}
 /* ------------------------------------------------------------------ */
 /*  Main App                                                           */
 /* ------------------------------------------------------------------ */
@@ -152,6 +201,10 @@ export default function App() {
   const taskSinceRef = useRef(null);
   const lastRefRef = useRef(null);
 
+  const [darkMode, setDarkMode] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [otpCountdown, setOtpCountdown] = useState(null);
+
   const [form, setForm] = useState({
     vendorId: "VENDOR_BANK_APP",
     sdkSessionId: randomId("SDK"),
@@ -159,7 +212,7 @@ export default function App() {
     deviceModel: "Pixel 8 Pro",
     osVersion: "Android 15",
     nfcSupported: true,
-    phone: "0909" + String(Math.floor(100000 + Math.random() * 900000)),
+    phone: "",
   });
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -191,7 +244,7 @@ export default function App() {
     if (!wfId) return;
     try {
       const res = await api(baseUrl, `/api/conductor/${wfId}`);
-      setWf(res);
+      setWf((prev) => (JSON.stringify(prev) === JSON.stringify(res) ? prev : res));
     } catch (e) { /* transient, giữ nguyên state cũ */ }
   }, [baseUrl, wfId]);
 
@@ -201,6 +254,19 @@ export default function App() {
     const t = setInterval(pollStatus, 2000);
     return () => clearInterval(t);
   }, [wfId, pollStatus]);
+
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 6000);
+    return () => clearTimeout(t);
+  }, [error]);
+
+  useEffect(() => {
+    if (otpDebug == null) return;
+    setOtpCountdown(otpDebug.ttlSecondsRemaining);
+    const t = setInterval(() => setOtpCountdown((s) => (s == null || s <= 1 ? 0 : s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [otpDebug]);
 
   // Phát hiện task đứng lâu bất thường: chỉ áp dụng cho task KHÔNG cần thao
   // tác KH (awaitingCustomerInput=false) — vì đó là lúc BE worker phải tự
@@ -231,11 +297,7 @@ export default function App() {
         sdkSessionId: form.sdkSessionId,
         productType: form.productType,
         deviceInfo: { model: form.deviceModel, osVersion: form.osVersion, nfcSupported: form.nfcSupported },
-        phone: form.phone,
         vendorId: form.vendorId,
-        maxOcrRetries: 3,
-        maxLivenessRetries: 3,
-        maxNfcRetries: 3,
         forceComplianceResult: forceCompliance || null,
       });
       setWfId(res.workflowId);
@@ -246,6 +308,7 @@ export default function App() {
       taskSinceRef.current = Date.now();
       lastRefRef.current = null;
       setTaskStalled(false);
+      setF("phone", "");
     });
 
   function taskRefToForceFailKey(ref) {
@@ -257,11 +320,15 @@ export default function App() {
 
   const doCompleteTask = (taskRef) =>
     run(async () => {
-      const body =
-        taskRef === "verify_otp_ref"
-          ? { forceFail: false, outputData: { otp: otpValue } }
-          : { forceFail: !!forceFail[taskRefToForceFailKey(taskRef)], outputData: null };
-      await api(baseUrl, `/api/conductor/${wfId}/tasks/${taskRef}/complete`, "POST", body);
+    const body =
+      taskRef === "verify_otp_ref"
+        ? { forceFail: false, outputData: { otp: otpValue } }
+        : taskRef === "collect_phone_number_ref"
+        ? { forceFail: false, outputData: { phone: form.phone } }
+        : { forceFail: !!forceFail[taskRefToForceFailKey(taskRef)], outputData: null };
+
+       await api(baseUrl, `/api/conductor/${wfId}/tasks/${taskRef}/complete`, "POST", body);
+      
       await pollStatus();
     });
 
@@ -270,6 +337,13 @@ export default function App() {
       const res = await api(baseUrl, `/api/onboarding/debug/otp?phone=${encodeURIComponent(form.phone)}`);
       setOtpDebug(res);
       setOtpValue(res.otp);
+    });
+
+  const doResendOtp = () =>
+    run(async () => {
+      await api(baseUrl, `/api/conductor/${wfId}/otp/resend`, "POST");
+      setOtpDebug(null);
+      setOtpValue("");
     });
 
   const doDropoff = () =>
@@ -292,10 +366,10 @@ export default function App() {
   const terminated = currentPhase === "DONE";
 
   return (
-    <div className="stage">
+    <div className={`stage ${darkMode ? "dark" : ""}`}>
       <StyleBlock />
-
       <div className="topbar">
+        
         <div className="topbar-brand">
           <div className="brand-mark">VB</div>
           <div>
@@ -303,9 +377,15 @@ export default function App() {
             <div className="brand-sub mono">{baseUrl}</div>
           </div>
         </div>
-        <button className="dev-fab-inline" onClick={() => setDevOpen(true)}>
-          <Settings2 size={16} /> QA Console
-        </button>
+
+        <div className="topbar-actions">
+          <button className="icon-toggle" onClick={() => setDarkMode((d) => !d)} title="Đổi giao diện sáng/tối">
+            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button className="dev-fab-inline" onClick={() => setDevOpen(true)}>
+            <Settings2 size={16} /> QA Console
+          </button>
+        </div>
       </div>
 
       <div className="layout">
@@ -341,10 +421,6 @@ export default function App() {
                         <option value="TKTT_DEBIT">TKTT + Thẻ Debit</option>
                       </select>
                     </Field>
-                    <Field label="Số điện thoại">
-                      <input className="mono" value={form.phone} onChange={(e) => setF("phone", e.target.value)} />
-                    </Field>
-                    <p className="hint">Số 0901111111 / 0902222222 → demo nhánh khách hàng hiện hữu (ETB).</p>
                     <PrimaryButton onClick={doStart} loading={loading}>
                       Mở tài khoản ngay <ChevronRight size={16} />
                     </PrimaryButton>
@@ -354,8 +430,27 @@ export default function App() {
                 {wfId && !terminated && !wf && <StepShell icon={<Smartphone size={22} />} eyebrow="Đang kết nối" title="Đang khởi tạo phiên..." />}
 
                 {wfId && !terminated && wf && !wf.awaitingCustomerInput && (
-                  <StepShell icon={<Smartphone size={22} />} eyebrow="Đang xử lý" title="Hệ thống đang xử lý bước tiếp theo..."
-                            subtitle={wf.currentTaskRef ? `Task: ${wf.currentTaskRef}` : undefined} />
+                  <StepSkeleton />
+                )}
+
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "show_cvp_ref" && (
+                  <CvpStep productType={form.productType}
+                          onSubmit={() => doCompleteTask("show_cvp_ref")} loading={loading} />
+                )}
+                
+                {wf?.awaitingCustomerInput && wf.currentTaskRef === "collect_phone_number_ref" && (
+                  <StepShell icon={<Smartphone size={22} />} eyebrow="Phase 2 · Số điện thoại" title="Nhập số điện thoại"
+                            subtitle="Dùng để định danh khách hàng và gửi OTP xác thực.">
+                    <Field label="Số điện thoại">
+                      <input className="mono" value={form.phone}
+                            onChange={(e) => setF("phone", e.target.value)} placeholder="0909xxxxxx" />
+                    </Field>
+                    <p className="hint">Số 0901111111 / 0902222222 → demo nhánh khách hàng hiện hữu (ETB).</p>
+                    <PrimaryButton onClick={() => doCompleteTask("collect_phone_number_ref")} loading={loading}
+                                  disabled={!/^0\d{9}$/.test(form.phone)}>
+                      Tiếp tục <ChevronRight size={16} />
+                    </PrimaryButton>
+                  </StepShell>
                 )}
 
                 {wf?.awaitingCustomerInput && wf.currentTaskRef === "loop_perform_ocr_ref" && (
@@ -385,7 +480,7 @@ export default function App() {
                     <div className="kv-card">
                       <KV label="Họ tên" value="NGUYEN VAN A" />
                       <KV label="Số CCCD" value="079099001234" mono />
-                      <KV label="Địa chỉ" value="123 Nguyễn Trãi, Q1, TP.HCM" />
+                      <KV label="Địa chỉ" value="Hai Ba Trung, Phuong Sai Gon, TP.HCM" />
                     </div>
                     <PrimaryButton onClick={() => doCompleteTask("show_identity_confirmation_ref")} loading={loading}>
                       Thông tin chính xác
@@ -419,11 +514,15 @@ export default function App() {
                     <button className="link-btn" onClick={doPeekOtp} disabled={loading}>
                       <Eye size={13} /> Xem OTP (debug)
                     </button>
+                    <button className="link-btn" onClick={doResendOtp} disabled={loading}>
+                      <RefreshCw size={13} /> Gửi lại OTP
+                    </button>
                   </StepShell>
                 )}
 
                 {terminated && (
-                  <ResultScreen wf={wf} onRestart={() => { setWfId(null); setWf(null); }} />
+                  <ResultScreen wf={wf} onRestart={() => { setWfId(null); setWf(null); }}
+                                copiedKey={copiedKey} onCopy={(t, k) => copyToClipboard(t, k, setCopiedKey)} />                
                 )}
               </div>
             </div>
@@ -437,7 +536,9 @@ export default function App() {
             <div className="side-title">Trạng thái phiên</div>
             {wf ? (
               <>
-                <KV label="Workflow" value={wf.workflowId} mono small />
+                <KV label="Workflow" value={wf.workflowId} mono small
+                    onCopyClick={() => copyToClipboard(wf.workflowId, "wf", setCopiedKey)}
+                    copied={copiedKey === "wf"} />                
                 <KV label="Task hiện tại" value={wf.currentTaskRef || "—"} />
                 <KV label="Status" value={<StatusBadge value={wf.status} />} />
                 {wf.output?.ebankUserId && <KV label="Ebank User" value={wf.output.ebankUserId} mono small />}
@@ -505,13 +606,22 @@ export default function App() {
                   <Eye size={14} /> Xem OTP hiện tại (debug endpoint)
                 </button>
 
+                <button className="dev-btn" onClick={doResendOtp} disabled={!wfId || loading}>
+                  <RefreshCw size={14} /> Gửi lại OTP (sinh mã mới)
+                </button>
+
                 <button className="dev-btn" onClick={doDropoff} disabled={!wfId || loading}>
                   <LogOut size={14} /> Giả lập thoát app (dropoff)
                 </button>
                 
                 {otpDebug && (
                   <div className="otp-peek mono">
-                    {otpDebug.otp} <span className="hint">còn {otpDebug.ttlSecondsRemaining}s</span>
+                    <span>{otpDebug.otp}</span>
+                    <button type="button" className="copy-btn" onClick={() => copyToClipboard(otpDebug.otp, "otp", setCopiedKey)} title="Sao chép OTP">
+                      {copiedKey === "otp" ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                    <span className="hint">
+                      {otpCountdown > 0 ? `hết hạn sau ${otpCountdown}s` : "đã hết hạn — bấm Gửi lại OTP để lấy mã mới"}                    </span>
                   </div>
                 )}
               </div>
@@ -574,15 +684,6 @@ function Toggle({ label, checked, onChange }) {
   );
 }
 
-function KV({ label, value, mono, small }) {
-  return (
-    <div className="kv-row">
-      <span className="kv-label">{label}</span>
-      <span className={`kv-value ${mono ? "mono" : ""} ${small ? "small" : ""}`}>{value}</span>
-    </div>
-  );
-}
-
 function StatusBadge({ value, small }) {
   const tone = value === "SUCCESS" ? "success" : value === "NEED_REVIEW" ? "review" : value === "FAILED" || value === "TERMINATED" ? "danger" : "progress";
   return <span className={`badge badge-${tone} ${small ? "small" : ""}`}>{value}</span>;
@@ -618,10 +719,12 @@ function AppHeader({ phone, wfId }) {
   );
 }
 
-function ProgressRail({ currentKey, terminated }) {
+const ProgressRail = React.memo(function ProgressRail({ currentKey, terminated }) {
   const idx = terminated ? FLOW.length - 1 : phaseIndex(currentKey);
+  const pct = Math.round((idx / (FLOW.length - 1)) * 100);
   return (
     <div className="rail">
+      <div className="rail-progress"><div className="rail-progress-fill" style={{ width: `${pct}%` }} /></div>
       <div className="rail-track">
         {FLOW.map((p, i) => (
           <div key={p.key} className={`rail-pill ${i < idx ? "done" : i === idx ? "active" : ""} lane-${p.lane}`}>
@@ -636,7 +739,7 @@ function ProgressRail({ currentKey, terminated }) {
       </div>
     </div>
   );
-}
+});
 
 function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLabel, forceFail, retryIteration, retryMax }) {
   return (
@@ -654,8 +757,67 @@ function EkycStep({ icon, eyebrow, title, subtitle, onSubmit, loading, actionLab
     </StepShell>
   );
 }
+function CvpPerk({ icon, title, desc }) {
+  return (
+    <div className="perk-row">
+      <div className="perk-icon">{icon}</div>
+      <div>
+        <div className="perk-title">{title}</div>
+        <div className="perk-desc">{desc}</div>
+      </div>
+    </div>
+  );
+}
 
-function ResultScreen({ wf, onRestart }) {
+function CvpStep({ productType, onSubmit, loading }) {
+  const [agreed, setAgreed] = useState(false);
+  const isDebit = productType === "TKTT_DEBIT";
+  return (
+    <StepShell icon={<Sparkles size={22} />} eyebrow="Chào mừng bạn 👋" title="Mở tài khoản, nhận ngay ưu đãi"
+               subtitle="Chỉ mất 5 phút — đây là những gì bạn được:">
+      <div className="cvp-perks">
+        <CvpPerk icon={<Gift size={18} />} title="Tặng 100.000đ vào ví"
+                 desc="Cộng ngay sau khi mở tài khoản thành công" />
+        <CvpPerk icon={<Zap size={18} />} title="Chuyển tiền 24/7 miễn phí"
+                 desc="Không giới hạn số lần, tới mọi ngân hàng" />
+        <CvpPerk icon={<Percent size={18} />} title="Lãi suất không kỳ hạn 0.5%/năm"
+                 desc="Tự động cộng dồn mỗi ngày, không cần thao tác gì" />
+        {isDebit && (
+          <CvpPerk icon={<CreditCard size={18} />} title="Kèm thẻ Debit contactless"
+                   desc="Hoàn tiền 1% mọi giao dịch trong 3 tháng đầu" />
+        )}
+      </div>
+      <Toggle label="Tôi đã đọc và đồng ý Điều khoản NHĐ13" checked={agreed} onChange={setAgreed} />
+      <PrimaryButton onClick={onSubmit} disabled={!agreed} loading={loading}>
+        Xác nhận & Mở TK ngay <ChevronRight size={16} />
+      </PrimaryButton>
+    </StepShell>
+  );
+}
+
+function Confetti() {
+  const pieces = React.useMemo(() =>
+    Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      delay: Math.random() * 0.4,
+      duration: 2.2 + Math.random() * 1.2,
+      color: ["#0FB8A0", "#EFA23B", "#0A2A4D", "#E5484D"][i % 4],
+      rotate: Math.random() * 360,
+    })), []);
+  return (
+    <div className="confetti-layer">
+      {pieces.map((p) => (
+        <span key={p.id} className="confetti-piece" style={{
+          left: `${p.left}%`, background: p.color,
+          animationDelay: `${p.delay}s`, animationDuration: `${p.duration}s`,
+          transform: `rotate(${p.rotate}deg)`,
+        }} />
+      ))}
+    </div>
+  );
+}
+function ResultScreen({ wf, onRestart, copiedKey, onCopy }) {
   const isEtbRedirect = wf.reasonForIncompletion && wf.reasonForIncompletion.startsWith("ETB_REDIRECT");
   if (isEtbRedirect) {
     return (
@@ -671,8 +833,12 @@ function ResultScreen({ wf, onRestart }) {
   const title = finalStatus === "SUCCESS" ? "Mở tài khoản thành công!" : finalStatus === "NEED_REVIEW" ? "Hồ sơ đang được xét duyệt" : "Không thể mở tài khoản";
   return (
     <StepShell icon={<Icon size={22} />} eyebrow="Kết quả cuối cùng" title={title}>
+      {finalStatus === "SUCCESS" && <Confetti />}
       <div className={`result-panel result-${tone}`}>
-        {wf.output?.accountNumber && <KV label="Số tài khoản" value={wf.output.accountNumber} mono />}
+        {wf.output?.accountNumber && (
+          <KV label="Số tài khoản" value={wf.output.accountNumber} mono
+              onCopyClick={() => onCopy(wf.output.accountNumber, "acc")} copied={copiedKey === "acc"} />
+        )}        
         {wf.output?.ebankUserId && <KV label="Ebank User ID" value={wf.output.ebankUserId} mono small />}
         {wf.output?.linkId && <KV label="Link ID" value={wf.output.linkId} mono small />}
         {(wf.output?.failureReason || wf.reasonForIncompletion) &&
@@ -780,6 +946,25 @@ function StyleBlock() {
         border-top-color:#fff;animation:spin .7s linear infinite;}
       @keyframes spin{to{transform:rotate(360deg);}}
 
+      /* skeleton */
+      .skel{background:linear-gradient(90deg,var(--line) 25%,#eef2f8 37%,var(--line) 63%);
+        background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;}
+      @keyframes shimmer{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
+      .skel-icon{width:42px;height:42px;border-radius:12px;margin-bottom:10px;}
+      .skel-line{height:14px;margin-bottom:8px;}
+      .skel-line.w40{width:40%;} .skel-line.w70{width:70%;} .skel-line.w55{width:55%;}
+      .stage.dark .skel{background:linear-gradient(90deg,#1a2c48 25%,#233553 37%,#1a2c48 63%);background-size:400% 100%;}
+      
+      /* confetti */
+      .confetti-layer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
+      .confetti-piece{position:absolute;top:-10px;width:8px;height:14px;border-radius:2px;
+        animation-name:confetti-fall;animation-timing-function:ease-in;animation-fill-mode:forwards;}
+      @keyframes confetti-fall{
+        0%{top:-10px;opacity:1;}
+        100%{top:110%;opacity:0;}
+      }
+      .step-card{position:relative;}
+
       .link-btn{background:none;border:none;color:var(--teal-dk);font-size:12.5px;font-weight:700;cursor:pointer;
         display:flex;align-items:center;gap:5px;padding:6px 0;}
       .link-btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -812,6 +997,14 @@ function StyleBlock() {
       .kv-label{color:var(--ink-soft);}
       .kv-value{font-weight:600;text-align:right;}
       .kv-value.small{font-size:11px;}
+
+      .cvp-perks{display:flex;flex-direction:column;gap:10px;background:#F6F8FC;border-radius:14px;padding:12px 14px;}
+      .perk-row{display:flex;gap:12px;align-items:flex-start;}
+      .perk-icon{width:34px;height:34px;border-radius:10px;flex-shrink:0;background:linear-gradient(135deg,var(--gold),#d88a1f);
+        color:#fff;display:flex;align-items:center;justify-content:center;}
+      .perk-title{font-size:13px;font-weight:700;color:var(--ink);}
+      .perk-desc{font-size:11.5px;color:var(--ink-soft);margin-top:1px;line-height:1.4;}
+      .stage.dark .cvp-perks{background:#0F1C32;}
 
       .tnc-box{background:#F6F8FC;border-radius:12px;padding:14px;font-size:12px;color:var(--ink-soft);
         max-height:110px;overflow-y:auto;line-height:1.5;}
@@ -867,6 +1060,24 @@ function StyleBlock() {
         .layout{flex-direction:column;align-items:center;}
         .side-panel{width:100%;max-width:380px;}
       }
+      .copy-btn{background:none;border:none;cursor:pointer;color:var(--ink-soft);padding:2px 4px;margin-left:6px;
+        display:inline-flex;vertical-align:-2px;border-radius:6px;}
+      .copy-btn:hover{color:var(--teal-dk);background:rgba(15,184,160,.1);}
+
+      .rail-progress{height:3px;background:var(--line);border-radius:99px;margin-bottom:8px;overflow:hidden;}
+      .rail-progress-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-dk));transition:width .4s ease;}
+
+      .step-card{animation:stepIn .35s ease both;}
+      @keyframes stepIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+      .topbar-actions{display:flex;align-items:center;gap:8px;}
+      .icon-toggle{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--surface);
+        color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .icon-toggle:hover{border-color:var(--teal);color:var(--teal-dk);}
+
+      .stage.dark{--bg:#0B1626;--surface:#132038;--ink:#E7EEF7;--ink-soft:#93A5C0;--line:#233553;}
+      .stage.dark .scan-frame{background:#050C16;}
+      .stage.dark .kv-card,.stage.dark .tnc-box,.stage.dark .toggle-row{background:#0F1C32;}
     `}</style>
   );
 }

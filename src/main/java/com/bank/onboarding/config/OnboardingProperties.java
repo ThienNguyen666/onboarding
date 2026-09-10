@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
+import java.util.Map;
+
 /**
  * Cấu hình nghiệp vụ cho luồng eKYC onboarding (prototype).
  * Dùng record + constructor binding thay vì getter/setter thủ công:
@@ -16,7 +18,8 @@ public record OnboardingProperties(
         Otp otp,
         Dropoff dropoff,
         EkycMock ekycMock,
-        ComplianceMock complianceMock
+        ComplianceMock complianceMock,
+        Map<String, Vendor> vendors
 ) {
 
         public record Retry(
@@ -43,4 +46,6 @@ public record OnboardingProperties(
         public record ComplianceMock(
                 @NotBlank @DefaultValue("RULE_BASED") String strategy
         ) {}
+
+        public record Vendor(@NotBlank String apiKey, @NotBlank String secret) {}
 }

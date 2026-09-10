@@ -6,8 +6,10 @@ import com.netflix.conductor.common.run.Workflow;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Set;
 import java.util.Map;
+
+import com.bank.onboarding.domain.HumanTaskRefs;
+
 /**
  * Convert Workflow (Orkes) -> WorkflowStatusResponse. "Human task" = các
  * taskReferenceName có asyncComplete=true trong workflow JSON — FE phải gọi
@@ -16,25 +18,15 @@ import java.util.Map;
 @Component
 public class WorkflowStatusMapper {
 
-        private static final Set<String> HUMAN_TASK_REFS = Set.of(
-                "loop_perform_ocr_ref", "loop_perform_liveness_ref",
-                "loop_perform_nfc_ref", "verify_otp_ref",
-                "show_identity_confirmation_ref", "show_tnc_screen_ref");
-                
-        private static final Map<String, String> HUMAN_TASK_TO_LOOP_REF = Map.of(
-                "loop_perform_ocr_ref", "ocr_cccd_retry_loop_ref",
-                "loop_perform_liveness_ref", "liveness_retry_loop_ref",
-                "loop_perform_nfc_ref", "nfc_retry_loop_ref");
-
         public WorkflowStatusResponse toResponse(Workflow workflow) {
         Task pending = findLatest(workflow.getTasks(),
-                t -> HUMAN_TASK_REFS.contains(baseRef(t.getReferenceTaskName()))
+                t -> HumanTaskRefs.REFS.contains(baseRef(t.getReferenceTaskName()))
                         && (t.getStatus() == Task.Status.IN_PROGRESS || t.getStatus() == Task.Status.SCHEDULED));
         Task current = pending != null ? pending : findLatest(workflow.getTasks(),
                 t -> t.getStatus() == Task.Status.IN_PROGRESS || t.getStatus() == Task.Status.SCHEDULED);
 
         Integer iteration = null, maxRetries = null;
-        String loopRef = pending != null ? HUMAN_TASK_TO_LOOP_REF.get(baseRef(pending.getReferenceTaskName())) : null;
+        String loopRef = pending != null ? HumanTaskRefs.TO_LOOP_REF.get(baseRef(pending.getReferenceTaskName())) : null;        
         if (loopRef != null) {
                 Task loop = findLatest(workflow.getTasks(), t -> loopRef.equals(t.getReferenceTaskName()));
                 if (loop != null && loop.getOutputData() != null) {

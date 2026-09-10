@@ -1,0 +1,18 @@
+app:
+  onboarding:
+    cors:
+      # Bắt buộc phải set ALLOWED_ORIGINS khi chạy prod — không có giá trị mặc định (fail-fast nếu quên).
+      allowed-origins: ${ALLOWED_ORIGINS}
+    otp:
+      debug-endpoint-enabled: false
+
+logging:
+  level:
+    root: WARN
+    "[com.bank.onboarding]": INFO
+
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
