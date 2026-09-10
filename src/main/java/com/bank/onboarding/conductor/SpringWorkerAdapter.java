@@ -77,8 +77,6 @@ public class SpringWorkerAdapter implements Worker {
 
             result.setStatus(isAsyncComplete ? TaskResult.Status.IN_PROGRESS : TaskResult.Status.COMPLETED);
             if (isAsyncComplete) {
-                // Không set cái này = bug đang gặp: task visible lại ngay -> tự poll
-                // lặp vô hạn, đè output thật của FE.
                 result.setCallbackAfterSeconds(ASYNC_COMPLETE_CALLBACK_SECONDS);
             }
 
